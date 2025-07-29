@@ -2434,9 +2434,6 @@ mod tests {
         let mut server_cert_signed_buf =
             std::io::Cursor::new(server_cert_signed.as_bytes().to_vec());
 
-        let mut server_cert_signed_buf =
-            std::io::Cursor::new(server_cert_signed.as_bytes().to_vec());
-
         assert_eq!(
             client_conn_peer_id[0].0,
             {
