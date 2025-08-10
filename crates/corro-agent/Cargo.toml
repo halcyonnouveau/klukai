@@ -56,7 +56,6 @@ tracing-subscriber = { workspace = true }
 tripwire = { path = "../tripwire" }
 uhlc = { workspace = true }
 uuid = { workspace = true }
-corro-pg = { path = "../corro-pg" }
 indexmap = { workspace = true }
 governor.workspace = true
 

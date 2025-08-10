@@ -61,17 +61,6 @@ async fn run(agent: Agent, opts: AgentOptions, pconf: PerfConfig) -> eyre::Resul
     // Get our gossip address and make sure it's valid
     let gossip_addr = gossip_server_endpoint.local_addr()?;
 
-    //// Start PG server to accept query requests from PG clients
-    // TODO: pull this out into a separate function?
-    if let Some(pg_conf) = agent.config().api.pg.clone() {
-        info!("Starting PostgreSQL wire-compatible server");
-        let pg_server = corro_pg::start(agent.clone(), pg_conf, tripwire.clone()).await?;
-        info!(
-            "Started PostgreSQL wire-compatible server, listening at {}",
-            pg_server.local_addr
-        );
-    }
-
     let (to_send_tx, to_send_rx) = bounded(pconf.to_send_channel_len, "to_send");
     let (notifications_tx, notifications_rx) =
         bounded(pconf.notifications_channel_len, "notifications");

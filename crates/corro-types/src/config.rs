@@ -75,8 +75,6 @@ pub struct Config {
 
     #[serde(default)]
     pub log: LogConfig,
-    #[serde(default)]
-    pub consul: Option<ConsulConfig>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -144,25 +142,6 @@ pub struct ApiConfig {
     pub bind_addr: Vec<SocketAddr>,
     #[serde(alias = "authz", default)]
     pub authorization: Option<AuthzConfig>,
-    #[serde(default)]
-    pub pg: Option<PgConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PgConfig {
-    #[serde(alias = "addr")]
-    pub bind_addr: SocketAddr,
-    pub tls: Option<PgTlsConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PgTlsConfig {
-    pub cert_file: Utf8PathBuf,
-    pub key_file: Utf8PathBuf,
-    #[serde(default)]
-    pub ca_file: Option<Utf8PathBuf>,
-    #[serde(default)]
-    pub verify_client: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -340,7 +319,6 @@ pub struct ConfigBuilder {
     log: Option<LogConfig>,
     schema_paths: Vec<Utf8PathBuf>,
     max_change_size: Option<i64>,
-    consul: Option<ConsulConfig>,
     tls: Option<TlsConfig>,
     perf: Option<PerfConfig>,
 }
@@ -391,11 +369,6 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn consul(mut self, config: ConsulConfig) -> Self {
-        self.consul = Some(config);
-        self
-    }
-
     pub fn tls_config(mut self, config: TlsConfig) -> Self {
         self.tls = Some(config);
         self
@@ -424,7 +397,6 @@ impl ConfigBuilder {
             api: ApiConfig {
                 bind_addr: self.api_addr,
                 authorization: None,
-                pg: None,
             },
             gossip: GossipConfig {
                 bind_addr: self
@@ -445,8 +417,6 @@ impl ConfigBuilder {
             },
             telemetry,
             log: self.log.unwrap_or_default(),
-
-            consul: self.consul,
         })
     }
 }
@@ -469,10 +439,4 @@ pub enum LogFormat {
     #[default]
     Plaintext,
     Json,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct ConsulConfig {
-    pub client: consul_client::Config,
 }

@@ -3,7 +3,6 @@ use std::{iter::Peekable, ops::RangeInclusive};
 use antithesis_sdk::assert_always;
 pub use corro_api_types::SqliteValue;
 use corro_api_types::{ColumnName, TableName};
-use corro_base_types::CrsqlDbVersion;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -12,7 +11,7 @@ use tracing::{debug, trace, warn};
 
 use crate::{
     agent::{Agent, BookedVersions, ChangeError, VersionsSnapshot},
-    base::CrsqlSeq,
+    base::{CrsqlDbVersion, CrsqlSeq},
     broadcast::Timestamp,
 };
 

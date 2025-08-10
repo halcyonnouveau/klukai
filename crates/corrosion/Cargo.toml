@@ -10,7 +10,6 @@ bytes = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
-consul-client = { path = "../consul-client" }
 corro-admin = { path = "../corro-admin" }
 corro-agent = { path = "../corro-agent" }
 corro-api-types = { path = "../corro-api-types" }
@@ -24,7 +23,9 @@ hostname = { workspace = true }
 hyper = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
-notify = { version = "6.0.1", default-features = false, features = ["macos_kqueue"] }
+notify = { version = "6.0.1", default-features = false, features = [
+    "macos_kqueue",
+] }
 notify-debouncer-mini = { version = "0.3.0", default-features = false }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true }

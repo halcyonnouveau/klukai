@@ -311,11 +311,11 @@ impl Transport {
 
                 acc.udp_rx.bytes += stats.udp_rx.bytes;
                 acc.udp_rx.datagrams += stats.udp_rx.datagrams;
-                acc.udp_rx.transmits += stats.udp_rx.transmits;
+                acc.udp_rx.ios += stats.udp_rx.transmits;
 
                 acc.udp_tx.bytes += stats.udp_tx.bytes;
                 acc.udp_tx.datagrams += stats.udp_tx.datagrams;
-                acc.udp_tx.transmits += stats.udp_tx.transmits;
+                acc.udp_tx.ios += stats.udp_tx.transmits;
 
                 acc
             });
@@ -411,11 +411,11 @@ impl Transport {
 
         gauge!("corro.transport.udp_rx.bytes").set(stats.udp_rx.bytes as f64);
         gauge!("corro.transport.udp_rx.datagrams").set(stats.udp_rx.datagrams as f64);
-        gauge!("corro.transport.udp_rx.transmits").set(stats.udp_rx.transmits as f64);
+        gauge!("corro.transport.udp_rx.transmits").set(stats.udp_rx.ios as f64);
 
         gauge!("corro.transport.udp_tx.bytes").set(stats.udp_tx.bytes as f64);
         gauge!("corro.transport.udp_tx.datagrams").set(stats.udp_tx.datagrams as f64);
-        gauge!("corro.transport.udp_tx.transmits").set(stats.udp_tx.transmits as f64);
+        gauge!("corro.transport.udp_tx.transmits").set(stats.udp_tx.ios as f64);
     }
 }
 
