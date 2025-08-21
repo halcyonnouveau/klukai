@@ -1,0 +1,13 @@
+[package]
+name = "klukai-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+klukai-agent.workspace = true
+klukai-client.workspace = true
+klukai-types.workspace = true
+eyre = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }

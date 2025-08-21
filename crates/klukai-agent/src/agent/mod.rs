@@ -1,0 +1,52 @@
+//! Agent module
+//!
+//! The agent runs input and output streams (with other agents and
+//! clients), manages cluster memberships, and applies propagated
+//! changesets to local data.
+
+mod bi;
+mod bootstrap;
+mod error;
+mod handlers;
+mod metrics;
+mod run_root;
+mod setup;
+mod uni;
+pub mod util;
+
+#[cfg(test)]
+mod tests;
+
+use bytes::Bytes;
+use klukai_types::api::QueryEventMeta;
+use std::{collections::HashMap, sync::Arc, time::Duration};
+use tokio::sync::{RwLock, broadcast::Sender};
+use uuid::Uuid;
+
+// Public exports
+pub use error::{SyncClientError, SyncRecvError};
+pub use run_root::start_with_config;
+pub use setup::{AgentOptions, setup};
+pub use uni::spawn_unipayload_handler;
+pub use util::process_multiple_changes;
+
+pub const ANNOUNCE_INTERVAL: Duration = Duration::from_secs(300);
+pub const RANDOM_NODES_CHOICES: usize = 10;
+
+pub const CHECK_EMPTIES_TO_INSERT_AFTER: Duration = Duration::from_secs(120);
+pub const TO_CLEAR_COUNT: usize = 1000;
+
+pub type BcastCache = Arc<RwLock<HashMap<Uuid, Sender<(Bytes, QueryEventMeta)>>>>;
+
+#[derive(Clone)]
+pub struct CountedExecutor;
+
+impl<F> hyper::rt::Executor<F> for CountedExecutor
+where
+    F: std::future::Future + Send + 'static,
+    F::Output: Send,
+{
+    fn execute(&self, fut: F) {
+        klukai_types::spawn::spawn_counted(fut);
+    }
+}

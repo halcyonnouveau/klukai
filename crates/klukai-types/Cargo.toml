@@ -1,0 +1,64 @@
+[package]
+name = "klukai-types"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Core types and utilities for Klukai Corrosion"
+
+[dependencies]
+arc-swap = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+camino = { workspace = true }
+circular-buffer = { workspace = true }
+compact_str = { workspace = true }
+config = { workspace = true }
+deadpool = { workspace = true }
+enquote = { workspace = true }
+fallible-iterator = { workspace = true }
+foca = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+hex = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+nix = { workspace = true }
+metrics = { workspace = true }
+once_cell = { workspace = true }
+opentelemetry = { workspace = true }
+parking_lot = { workspace = true }
+pin-project-lite = { workspace = true }
+rand = { workspace = true }
+rangemap = { workspace = true }
+rcgen = { workspace = true }
+rusqlite = { workspace = true }
+seahash = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+smallvec = { workspace = true }
+speedy = { workspace = true }
+sqlite3-parser = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+uhlc = { workspace = true }
+uuid = { workspace = true }
+strum = { workspace = true }
+antithesis_sdk = { workspace = true }
+
+[features]
+default = ["rt_tokio_1"]
+rt_tokio_1 = ["deadpool/rt_tokio_1"]
+
+[dev-dependencies]
+assert2 = { workspace = true }
+tracing-subscriber = { workspace = true }
+klukai-tests.workspace = true

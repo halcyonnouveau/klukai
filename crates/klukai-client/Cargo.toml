@@ -1,0 +1,28 @@
+[package]
+name = "klukai-client"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Client library for Klukai Corrosion distributed SQLite"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytes = { workspace = true }
+klukai-types.workspace = true
+eyre = { workspace = true }
+futures = { workspace = true }
+hickory-resolver = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
+pin-project-lite = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
