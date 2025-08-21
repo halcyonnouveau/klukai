@@ -1,0 +1,17 @@
+[workspace]
+# All crates will use the same version
+allow_dirty = false
+publish_allow_dirty = false
+git_release_enable = true
+
+[[package]]
+name = "klukai-tests"
+publish = false
+
+[[package]]
+name = "klukai-devcluster"
+publish = false
+
+[[package]]
+name = "integration-tests"
+publish = false
