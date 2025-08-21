@@ -82,7 +82,12 @@ quinn-proto = "0.11"
 quoted-string = "0.6.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rangemap = { version = "1.5.1", features = ["serde1"] }
-rcgen = { version = "0.11.1", features = ["x509-parser"] }
+rcgen = { version = "0.14", features = [
+    "x509-parser",
+    "aws_lc_rs",
+    "crypto",
+    "pem",
+], default-features = false }
 rhai = { version = "1.15.1", features = ["sync"] }
 rhai-tpl = { version = "0.1.2" }
 rusqlite = { version = "0.37.0", features = [

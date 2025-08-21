@@ -2406,17 +2406,15 @@ mod tests {
     async fn test_mutual_tls() -> eyre::Result<()> {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-        let ca_cert = generate_ca()?;
-        let (server_cert, server_cert_signed) = generate_server_cert(
-            &ca_cert.serialize_pem()?,
-            &ca_cert.serialize_private_key_pem(),
+        let (ca_cert, ca_key_pair) = generate_ca()?;
+        let (_server_cert, server_cert_signed, server_key_pair) = generate_server_cert(
+            &ca_cert.pem(),
+            &ca_key_pair.serialize_pem(),
             "127.0.0.1".parse()?,
         )?;
 
-        let (client_cert, client_cert_signed) = generate_client_cert(
-            &ca_cert.serialize_pem()?,
-            &ca_cert.serialize_private_key_pem(),
-        )?;
+        let (_client_cert, client_cert_signed, client_key_pair) =
+            generate_client_cert(&ca_cert.pem(), &ca_key_pair.serialize_pem())?;
 
         let tmpdir = TempDir::new()?;
         let base_path = Utf8PathBuf::from(tmpdir.path().display().to_string());
@@ -2429,12 +2427,12 @@ mod tests {
         let client_key_file = base_path.join("client-cert.key");
 
         tokio::fs::write(&cert_file, &server_cert_signed).await?;
-        tokio::fs::write(&key_file, server_cert.serialize_private_key_pem()).await?;
+        tokio::fs::write(&key_file, server_key_pair.serialize_pem()).await?;
 
-        tokio::fs::write(&ca_file, ca_cert.serialize_pem()?).await?;
+        tokio::fs::write(&ca_file, ca_cert.pem()).await?;
 
         tokio::fs::write(&client_cert_file, &client_cert_signed).await?;
-        tokio::fs::write(&client_key_file, client_cert.serialize_private_key_pem()).await?;
+        tokio::fs::write(&client_key_file, client_key_pair.serialize_pem()).await?;
 
         let gossip_config = GossipConfig {
             bind_addr: "127.0.0.1:0".parse()?,

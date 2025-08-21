@@ -5,18 +5,18 @@ use tokio::io::AsyncWriteExt;
 use tracing::info;
 
 pub async fn generate_ca<P: AsRef<Path>>(output_path: P) -> eyre::Result<()> {
-    let cert = klukai_types::tls::generate_ca()?;
+    let (cert, key_pair) = klukai_types::tls::generate_ca()?;
 
     let cert_path = output_path.as_ref().join("ca_cert.pem");
     let key_path = output_path.as_ref().join("ca_key.pem");
 
-    let cert_pem = cert.serialize_pem();
+    let cert_pem = cert.pem();
     let mut cert_file = tokio::fs::File::create(&cert_path).await?;
-    cert_file.write_all(cert_pem.unwrap().as_bytes()).await?;
+    cert_file.write_all(cert_pem.as_bytes()).await?;
 
     info!("Wrote CA cert to {}", cert_path.display());
 
-    let private_key_pem = cert.serialize_private_key_pem();
+    let private_key_pem = key_pair.serialize_pem();
     let mut private_key_file = tokio::fs::File::create(&key_path).await?;
     private_key_file
         .write_all(private_key_pem.as_bytes())
@@ -38,7 +38,7 @@ pub async fn generate_server_cert<P1: AsRef<Path>, P2: AsRef<Path>>(
     let ca_cert_bytes = tokio::fs::read(ca_cert_path.as_ref()).await?;
     let ca_cert_pem = String::from_utf8_lossy(&ca_cert_bytes);
 
-    let (cert, cert_signed) =
+    let (_cert, cert_signed, key_pair) =
         klukai_types::tls::generate_server_cert(&ca_cert_pem, &ca_key_pem, ip)?;
 
     let cert_file_path = Utf8PathBuf::from("server_cert.pem");
@@ -50,7 +50,7 @@ pub async fn generate_server_cert<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let key_file_path = Utf8PathBuf::from("server_key.pem");
 
-    let private_key_pem = cert.serialize_private_key_pem();
+    let private_key_pem = key_pair.serialize_pem();
     let mut private_key_file = tokio::fs::File::create(&key_file_path).await?;
     private_key_file
         .write_all(private_key_pem.as_bytes())
@@ -71,7 +71,8 @@ pub async fn generate_client_cert<P1: AsRef<Path>, P2: AsRef<Path>>(
     let ca_cert_bytes = tokio::fs::read(ca_cert_path.as_ref()).await?;
     let ca_cert_pem = String::from_utf8_lossy(&ca_cert_bytes);
 
-    let (cert, cert_signed) = klukai_types::tls::generate_client_cert(&ca_cert_pem, &ca_key_pem)?;
+    let (_cert, cert_signed, key_pair) =
+        klukai_types::tls::generate_client_cert(&ca_cert_pem, &ca_key_pem)?;
 
     let cert_file_path = Utf8PathBuf::from("client_cert.pem");
 
@@ -82,7 +83,7 @@ pub async fn generate_client_cert<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let key_file_path = Utf8PathBuf::from("client_key.pem");
 
-    let private_key_pem = cert.serialize_private_key_pem();
+    let private_key_pem = key_pair.serialize_pem();
     let mut private_key_file = tokio::fs::File::create(&key_file_path).await?;
     private_key_file
         .write_all(private_key_pem.as_bytes())

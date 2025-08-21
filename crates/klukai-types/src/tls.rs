@@ -2,29 +2,28 @@ use std::net::IpAddr;
 
 use rcgen::{
     BasicConstraints, Certificate, CertificateParams, DistinguishedName, DnType, DnValue, IsCa,
-    KeyIdMethod, KeyPair, KeyUsagePurpose, PKCS_ECDSA_P384_SHA384, SanType,
+    Issuer, KeyIdMethod, KeyPair, KeyUsagePurpose, SanType,
 };
 use time::OffsetDateTime;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Rcgen(#[from] rcgen::RcgenError),
+    Rcgen(#[from] rcgen::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
-pub fn generate_ca() -> Result<Certificate, Error> {
+pub fn generate_ca() -> Result<(Certificate, KeyPair), Error> {
+    let key_pair = KeyPair::generate()?;
     let mut params = CertificateParams::default();
 
-    params.alg = &PKCS_ECDSA_P384_SHA384;
-    params.key_pair = Some(KeyPair::generate(&PKCS_ECDSA_P384_SHA384)?);
     params.key_identifier_method = KeyIdMethod::Sha384;
 
     let mut dn = DistinguishedName::new();
     dn.push(
         DnType::CommonName,
-        DnValue::PrintableString("Corrosion Root CA".to_string()),
+        DnValue::PrintableString("Corrosion Root CA".try_into()?),
     );
     params.distinguished_name = dn;
     params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
@@ -33,28 +32,27 @@ pub fn generate_ca() -> Result<Certificate, Error> {
     params.not_after = OffsetDateTime::now_utc() + time::Duration::days(365 * 5);
 
     params.key_usages = vec![KeyUsagePurpose::KeyCertSign, KeyUsagePurpose::CrlSign];
-    let cert = Certificate::from_params(params)?;
+    let cert = params.self_signed(&key_pair)?;
 
-    Ok(cert)
+    Ok((cert, key_pair))
 }
 
 pub fn generate_server_cert(
     ca_cert_pem: &str,
     ca_key_pem: &str,
     ip: IpAddr,
-) -> Result<(Certificate, String), Error> {
+) -> Result<(Certificate, String, KeyPair), Error> {
     let ca_cert = ca_cert(ca_cert_pem, ca_key_pem)?;
+    let key_pair = KeyPair::generate()?;
 
     let mut params = CertificateParams::default();
 
-    params.alg = &PKCS_ECDSA_P384_SHA384;
-    params.key_pair = Some(KeyPair::generate(&PKCS_ECDSA_P384_SHA384).unwrap());
     params.key_identifier_method = KeyIdMethod::Sha384;
 
     let mut dn = DistinguishedName::new();
     dn.push(
         DnType::CommonName,
-        DnValue::PrintableString("r.u.local".to_string()),
+        DnValue::PrintableString("r.u.local".try_into()?),
     );
     params.distinguished_name = dn;
 
@@ -63,29 +61,29 @@ pub fn generate_server_cert(
     params.not_before = OffsetDateTime::now_utc();
     params.not_after = OffsetDateTime::now_utc() + time::Duration::days(365);
 
-    let cert = Certificate::from_params(params)?;
-    let cert_signed = cert.serialize_pem_with_signer(&ca_cert)?;
+    let cert = params.signed_by(&key_pair, &ca_cert)?;
+    let cert_signed = cert.pem();
 
-    Ok((cert, cert_signed))
+    Ok((cert, cert_signed, key_pair))
 }
 
-fn ca_cert(ca_cert_pem: &str, ca_key_pem: &str) -> Result<Certificate, rcgen::RcgenError> {
-    Certificate::from_params(CertificateParams::from_ca_cert_pem(
-        ca_cert_pem,
-        KeyPair::from_pem(ca_key_pem)?,
-    )?)
+fn ca_cert<'a>(
+    ca_cert_pem: &'a str,
+    ca_key_pem: &'a str,
+) -> Result<Issuer<'a, KeyPair>, rcgen::Error> {
+    let key_pair = KeyPair::from_pem(ca_key_pem)?;
+    Issuer::from_ca_cert_pem(ca_cert_pem, key_pair)
 }
 
 pub fn generate_client_cert(
     ca_cert_pem: &str,
     ca_key_pem: &str,
-) -> Result<(Certificate, String), Error> {
+) -> Result<(Certificate, String, KeyPair), Error> {
     let ca_cert = ca_cert(ca_cert_pem, ca_key_pem)?;
+    let key_pair = KeyPair::generate()?;
 
     let mut params = CertificateParams::default();
 
-    params.alg = &PKCS_ECDSA_P384_SHA384;
-    params.key_pair = Some(KeyPair::generate(&PKCS_ECDSA_P384_SHA384).unwrap());
     params.key_identifier_method = KeyIdMethod::Sha384;
 
     let dn = DistinguishedName::new();
@@ -94,8 +92,8 @@ pub fn generate_client_cert(
     params.not_before = OffsetDateTime::now_utc();
     params.not_after = OffsetDateTime::now_utc() + time::Duration::days(365);
 
-    let cert = Certificate::from_params(params)?;
-    let cert_signed = cert.serialize_pem_with_signer(&ca_cert)?;
+    let cert = params.signed_by(&key_pair, &ca_cert)?;
+    let cert_signed = cert.pem();
 
-    Ok((cert, cert_signed))
+    Ok((cert, cert_signed, key_pair))
 }
