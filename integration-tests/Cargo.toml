@@ -1,12 +1,12 @@
 [package]
 name = "integration-tests"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 assert_cmd = "2.0.12"
-corro-tests = { path = "../crates/corro-tests" }
-corro-types = { path = "../crates/corro-types" }
+klukai-tests = { path = "../crates/klukai-tests" }
+klukai-types = { path = "../crates/klukai-types" }
 escargot = "0.5.8"
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }

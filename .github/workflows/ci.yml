@@ -1,6 +1,6 @@
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
     branches:
       - main
@@ -57,33 +57,15 @@ jobs:
             os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Install rustfmt and clippy
-      run: rustup component add clippy rustfmt
-    # Split fetch so timings in Github show the actual
-    # time for the clippy run rather than including the cost of crate fetching
-    - run: cargo fetch
-    # run clippy to verify we have no warnings
-    - name: cargo clippy
-      run: cargo clippy --all-targets -- -D warnings
-    # Check there are no formatting issues
-    - name: rustfmt
-      run: cargo fmt -- --check --color always
-
-  book-test:
-    name: Build book
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # To push a branch
-      pull-requests: write  # To create a PR from that branch
-    steps:
-      - uses: actions/checkout@master
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: mdbook,mdbook-linkcheck,mdbook-admonish
-
-      - name: Build Book
-        run: mdbook build
+      - uses: actions/checkout@v4
+      - name: Install rustfmt and clippy
+        run: rustup component add clippy rustfmt
+      # Split fetch so timings in Github show the actual
+      # time for the clippy run rather than including the cost of crate fetching
+      - run: cargo fetch
+      # run clippy to verify we have no warnings
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+      # Check there are no formatting issues
+      - name: rustfmt
+        run: cargo fmt -- --check --color always

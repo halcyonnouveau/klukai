@@ -1,0 +1,25 @@
+[package]
+name = "klukai-client"
+version = "0.1.0-alpha.1"
+edition = "2024"
+description = "client to interact with klukai corrosion"
+license = "Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytes = { workspace = true }
+klukai-types = { version = "0.1.0-alpha.1", path = "../klukai-types" }
+eyre = { workspace = true }
+futures = { workspace = true }
+hickory-resolver = { workspace = true }
+http = { workspace = true }
+hyper = { workspace = true }
+pin-project-lite = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "klukai-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+klukai-agent = { path = "../klukai-agent" }
+klukai-client = { path = "../klukai-client" }
+klukai-types = { path = "../klukai-types" }
+eyre = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }

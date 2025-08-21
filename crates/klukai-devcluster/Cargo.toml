@@ -1,0 +1,12 @@
+[package]
+name = "klukai-devcluster"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+rand = { workspace = true }
+nom = { workspace = true }
+clap = { workspace = true }
