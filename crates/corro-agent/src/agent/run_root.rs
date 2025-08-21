@@ -92,7 +92,7 @@ async fn run(
     util::initialise_foca(&agent).await;
 
     // Load schema from paths
-    let stmts = corro_utils::read_files_from_paths(&agent.config().db.schema_paths).await?;
+    let stmts = util::read_files_from_paths(&agent.config().db.schema_paths).await?;
     if !stmts.is_empty() {
         if let Err(e) = execute_schema(&agent, stmts).await {
             error!("could not execute schema: {e}");

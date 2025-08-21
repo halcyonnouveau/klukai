@@ -10,7 +10,6 @@ bytes = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
-corro-admin = { path = "../corro-admin" }
 corro-agent = { path = "../corro-agent" }
 corro-api-types = { path = "../corro-api-types" }
 corro-client = { path = "../corro-client" }
@@ -23,6 +22,7 @@ hostname = { workspace = true }
 hyper = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+nix = { version = "*", features = ["fs"] }
 notify = { version = "6.0.1", default-features = false, features = [
     "macos_kqueue",
 ] }
@@ -31,13 +31,13 @@ once_cell = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true }
+rangemap = { workspace = true }
 rusqlite = { workspace = true }
 seahash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shellwords = { version = "1" }
 spawn = { path = "../spawn" }
-sqlite3-restore = { path = "../sqlite3-restore" }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tikv-jemallocator = "0.5"

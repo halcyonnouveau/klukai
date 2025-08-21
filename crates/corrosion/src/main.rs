@@ -12,7 +12,6 @@ use command::{
     tls::{generate_ca, generate_client_cert, generate_server_cert},
     tpl::TemplateFlags,
 };
-use corro_admin::TracingHandle;
 use corro_api_types::SqliteParam;
 use corro_client::CorrosionApiClient;
 use corro_types::{
@@ -43,6 +42,7 @@ use uuid::Uuid;
 
 pub mod admin;
 pub mod command;
+pub mod sqlite3_restore;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -54,7 +54,7 @@ build_info::build_info!(pub fn version);
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
-fn init_tracing(cli: &Cli) -> Result<Option<TracingHandle>, ConfigError> {
+fn init_tracing(cli: &Cli) -> Result<Option<admin::TracingHandle>, ConfigError> {
     let mut tracing_handle = None;
     if matches!(cli.command, Command::Agent) {
         let config = cli.config()?;
@@ -325,30 +325,26 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
         }
         Command::Cluster(ClusterCommand::Rejoin) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Cluster(
-                corro_admin::ClusterCommand::Rejoin,
-            ))
-            .await?;
+            conn.send_command(admin::Command::Cluster(admin::ClusterCommand::Rejoin))
+                .await?;
         }
         Command::Cluster(ClusterCommand::Members) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Cluster(
-                corro_admin::ClusterCommand::Members,
-            ))
-            .await?;
+            conn.send_command(admin::Command::Cluster(admin::ClusterCommand::Members))
+                .await?;
         }
         Command::Cluster(ClusterCommand::MembershipStates) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Cluster(
-                corro_admin::ClusterCommand::MembershipStates,
+            conn.send_command(admin::Command::Cluster(
+                admin::ClusterCommand::MembershipStates,
             ))
             .await?;
         }
         Command::Cluster(ClusterCommand::SetId { cluster_id }) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Cluster(
-                corro_admin::ClusterCommand::SetId(ClusterId(*cluster_id)),
-            ))
+            conn.send_command(admin::Command::Cluster(admin::ClusterCommand::SetId(
+                ClusterId(*cluster_id),
+            )))
             .await?;
         }
         Command::Query {
@@ -441,21 +437,17 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
         }
         Command::Sync(SyncCommand::Generate) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Sync(
-                corro_admin::SyncCommand::Generate,
-            ))
-            .await?;
+            conn.send_command(admin::Command::Sync(admin::SyncCommand::Generate))
+                .await?;
         }
         Command::Sync(SyncCommand::ReconcileGaps) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Sync(
-                corro_admin::SyncCommand::ReconcileGaps,
-            ))
-            .await?;
+            conn.send_command(admin::Command::Sync(admin::SyncCommand::ReconcileGaps))
+                .await?;
         }
         Command::Locks { top } => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Locks { top: *top })
+            conn.send_command(admin::Command::Locks { top: *top })
                 .await?;
         }
         Command::Template { template, flags } => {
@@ -474,12 +466,10 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
         },
         Command::Actor(ActorCommand::Version { actor_id, version }) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Actor(
-                corro_admin::ActorCommand::Version {
-                    actor_id: ActorId(*actor_id),
-                    version: CrsqlDbVersion(*version),
-                },
-            ))
+            conn.send_command(admin::Command::Actor(admin::ActorCommand::Version {
+                actor_id: ActorId(*actor_id),
+                version: CrsqlDbVersion(*version),
+            }))
             .await?;
         }
         Command::Db(DbCommand::Lock { cmd }) => {
@@ -518,7 +508,7 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
         }
         Command::Subs(SubsCommand::Info { hash, id }) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Subs(corro_admin::SubsCommand::Info {
+            conn.send_command(admin::Command::Subs(admin::SubsCommand::Info {
                 hash: hash.clone(),
                 id: *id,
             }))
@@ -526,19 +516,19 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
         }
         Command::Subs(SubsCommand::List) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Subs(corro_admin::SubsCommand::List))
+            conn.send_command(admin::Command::Subs(admin::SubsCommand::List))
                 .await?;
         }
         Command::Log(LogCommand::Set { filter }) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Log(corro_admin::LogCommand::Set {
+            conn.send_command(admin::Command::Log(admin::LogCommand::Set {
                 filter: filter.clone(),
             }))
             .await?;
         }
         Command::Log(LogCommand::Reset) => {
             let mut conn = AdminConn::connect(cli.admin_path()).await?;
-            conn.send_command(corro_admin::Command::Log(corro_admin::LogCommand::Reset))
+            conn.send_command(admin::Command::Log(admin::LogCommand::Reset))
                 .await?;
         }
     }

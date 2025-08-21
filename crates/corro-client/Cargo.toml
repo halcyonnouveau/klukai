@@ -10,7 +10,7 @@ license = "MIT"
 [dependencies]
 bytes = { workspace = true }
 corro-api-types = { version = "0.1.0-alpha.1", path = "../corro-api-types" }
-corro-utils = { path = "../corro-utils" }
+eyre = { workspace = true }
 futures = { workspace = true }
 hickory-resolver = { workspace = true }
 http = { workspace = true }

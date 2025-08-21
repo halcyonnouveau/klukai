@@ -24,6 +24,8 @@ use tokio::{
 use tracing::{debug, info};
 use uuid::Uuid;
 
+pub mod util;
+
 const HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const HTTP2_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const DNS_RESOLVE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -342,7 +344,7 @@ impl CorrosionApiClient {
         &self,
         schema_paths: &[P],
     ) -> Result<Option<ExecResponse>, Error> {
-        let statements: Vec<Statement> = corro_utils::read_files_from_paths(schema_paths)
+        let statements: Vec<Statement> = crate::util::read_files_from_paths(schema_paths)
             .await
             .map_err(|e| Error::ResponseError(e.to_string()))?
             .into_iter()

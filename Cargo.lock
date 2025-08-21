@@ -680,32 +680,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
-name = "corro-admin"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "camino",
- "corro-agent",
- "corro-types",
- "futures",
- "rangemap",
- "rusqlite",
- "serde",
- "serde_json",
- "spawn",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tokio-serde",
- "tokio-util",
- "tracing",
- "tracing-filter",
- "tracing-subscriber",
- "tripwire",
- "uuid",
-]
-
-[[package]]
 name = "corro-agent"
 version = "0.1.0"
 dependencies = [
@@ -721,7 +695,6 @@ dependencies = [
  "corro-speedy",
  "corro-tests",
  "corro-types",
- "corro-utils",
  "eyre",
  "foca",
  "futures",
@@ -792,7 +765,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "bytes",
  "corro-api-types",
- "corro-utils",
+ "eyre",
  "futures",
  "hickory-resolver",
  "http",
@@ -927,15 +900,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "corro-utils"
-version = "0.1.0"
-dependencies = [
- "eyre",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "corrosion"
 version = "0.2.0-beta.0"
 dependencies = [
@@ -946,7 +910,6 @@ dependencies = [
  "camino",
  "clap",
  "config",
- "corro-admin",
  "corro-agent",
  "corro-api-types",
  "corro-client",
@@ -961,12 +924,14 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-util",
+ "nix",
  "notify",
  "notify-debouncer-mini",
  "once_cell",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
+ "rangemap",
  "rusqlite",
  "seahash",
  "serde",
@@ -974,7 +939,6 @@ dependencies = [
  "shell-words",
  "shellwords",
  "spawn",
- "sqlite3-restore",
  "tempfile",
  "thiserror 1.0.69",
  "tikv-jemallocator",
@@ -3957,17 +3921,6 @@ dependencies = [
  "phf_shared",
  "smallvec",
  "uncased",
-]
-
-[[package]]
-name = "sqlite3-restore"
-version = "0.1.0"
-dependencies = [
- "nix",
- "rusqlite",
- "tempfile",
- "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]

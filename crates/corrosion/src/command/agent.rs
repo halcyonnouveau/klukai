@@ -1,9 +1,9 @@
 use std::{net::SocketAddr, time::Duration};
 
+use crate::admin::{AdminConfig, TracingHandle};
 use antithesis_sdk::prelude::*;
 use build_info::VersionControl;
 use camino::Utf8PathBuf;
-use corro_admin::{AdminConfig, TracingHandle};
 use corro_types::config::{Config, PrometheusConfig};
 use metrics::gauge;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
@@ -65,7 +65,7 @@ pub async fn run(
             .await
             .expect("could not start agent");
 
-    corro_admin::start_server(
+    crate::admin::start_server(
         agent.clone(),
         bookie.clone(),
         AdminConfig {
