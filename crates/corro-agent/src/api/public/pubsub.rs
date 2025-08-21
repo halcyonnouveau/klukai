@@ -888,9 +888,9 @@ mod tests {
     use corro_types::base::{CrsqlDbVersion, CrsqlSeq};
     use corro_types::broadcast::{ChangeSource, ChangeV1, Changeset};
     use corro_types::change::Change;
+    use corro_types::pubsub::pack_columns;
     use corro_types::spawn::wait_for_all_pending_handles;
     use corro_types::tripwire::Tripwire;
-    use corro_types::pubsub::pack_columns;
     use corro_types::{
         api::{ChangeId, RowId},
         config::Config,
