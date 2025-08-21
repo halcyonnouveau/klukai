@@ -48,7 +48,6 @@ use corro_types::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-
 async fn insert_rows_and_gossip() -> eyre::Result<()> {
     _ = tracing_subscriber::fmt::try_init();
     let (tripwire, tripwire_worker, tripwire_tx) = Tripwire::new_simple();
@@ -1202,7 +1201,7 @@ async fn check_bookie_versions(
             // should not be in gaps
             assert!(!conn.prepare_cached(
                 "SELECT EXISTS (SELECT 1 FROM __corro_bookkeeping_gaps WHERE actor_id = ? and ? between start and end)")?
-                .query_row((actor_id, version), |row| row.get(0))?);
+                .query_row((actor_id, version), |row| row.get::<usize, bool>(0))?);
         }
         bookedv.contains_all(versions.clone(), Some(&(CrsqlSeq(0)..=CrsqlSeq(3))));
     }
@@ -1229,7 +1228,7 @@ async fn check_bookie_versions(
             // should not be in gaps
             assert!(!conn.prepare_cached(
                 "SELECT EXISTS (SELECT 1 FROM __corro_bookkeeping_gaps WHERE actor_id = ? and ? BETWEEN start and end)")?
-                .query_row((actor_id, version), |row| row.get(0))?);
+                .query_row((actor_id, version), |row| row.get::<usize, bool>(0))?);
 
             let partial = bookedv.get_partial(&version);
             assert_ne!(partial, None);
@@ -1254,7 +1253,7 @@ async fn check_bookie_versions(
         for version in versions {
             assert!(!conn.prepare_cached(
             "SELECT EXISTS (SELECT 1 FROM crsql_changes WHERE site_id = ? and db_version = ?)")?
-            .query_row((actor_id, version), |row| row.get(0))?, "Version {version} not cleared in crsql_changes table");
+            .query_row((actor_id, version), |row| row.get::<usize, bool>(0))?, "Version {version} not cleared in crsql_changes table");
         }
     }
 
