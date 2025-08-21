@@ -75,11 +75,16 @@ pub fn spawn_gossipserver_handler(
                 };
 
                 // Spawn incoming connection handlers
-                spawn_incoming_connection_handlers(&agent, &bookie, &tripwire, connecting);
+                spawn_incoming_connection_handlers(
+                    &agent,
+                    &bookie,
+                    &tripwire,
+                    connecting.accept().unwrap(),
+                );
             }
 
             // graceful shutdown
-            gossip_server_endpoint.reject_new_connections();
+            gossip_server_endpoint.close(0u32.into(), b"shutdown");
             _ = gossip_server_endpoint
                 .wait_idle()
                 .with_timeout(Duration::from_secs(5))

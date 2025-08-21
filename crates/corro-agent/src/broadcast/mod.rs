@@ -1116,7 +1116,7 @@ mod tests {
         let config = Arc::new(RwLock::new(make_foca_config(1.try_into().unwrap())));
         let transport = Transport::new(&ta1.config.gossip, tx_rtt).await?;
 
-        let server_config = quinn_plaintext::server_config();
+        let server_config = crate::quinn_plaintext::server_config();
         let endpoint = quinn::Endpoint::server(server_config, "127.0.0.1:0".parse().unwrap())?;
         let ta2_gossip_addr = endpoint.local_addr()?;
         println!("listening on {ta2_gossip_addr}");

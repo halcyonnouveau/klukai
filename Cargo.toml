@@ -1,8 +1,5 @@
 [workspace]
-members = [
-    "crates/*",
-    "integration-tests",
-]
+members = ["crates/*", "integration-tests"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -61,9 +58,8 @@ opentelemetry-otlp = { version = "0.13.0" }
 opentelemetry-semantic-conventions = { version = "0.12.0" }
 parking_lot = { version = "0.12.1" }
 pin-project-lite = "0.2.9"
-quinn = "0.10.2"
+quinn = "0.11"
 quinn-proto = "0.11"
-quinn-plaintext = { version = "0.2.0" }
 quoted-string = "0.6.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rangemap = { version = "1.5.1", features = ["serde1"] }
@@ -83,8 +79,9 @@ rusqlite = { version = "0.37.0", features = [
     "series",
     "trace",
 ] }
-rustls = { version = "0.21.0", features = ["dangerous_configuration", "quic"] }
-rustls-pemfile = "1.0.2"
+rustls = "0.23"
+rustls-pki-types = "1.12"
+rustls-pemfile = "2.2"
 seahash = "4.1.0"
 serde = "1.0.159"
 serde_json = { version = "1.0.95", features = ["raw_value"] }

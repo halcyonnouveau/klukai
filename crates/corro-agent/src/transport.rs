@@ -44,6 +44,8 @@ pub enum TransportError {
     SendStreamWrite(#[from] WriteError),
     #[error(transparent)]
     TimedOut(#[from] Elapsed),
+    #[error(transparent)]
+    ClosedStream(#[from] quinn::ClosedStream),
 }
 
 impl Transport {
@@ -129,10 +131,7 @@ impl Transport {
             .instrument(debug_span!("quic_write_chunk"))
             .await?;
 
-        stream
-            .finish()
-            .instrument(debug_span!("quic_finish"))
-            .await?;
+        stream.finish()?;
 
         Ok(())
     }
@@ -311,11 +310,11 @@ impl Transport {
 
                 acc.udp_rx.bytes += stats.udp_rx.bytes;
                 acc.udp_rx.datagrams += stats.udp_rx.datagrams;
-                acc.udp_rx.ios += stats.udp_rx.transmits;
+                acc.udp_rx.ios += stats.udp_rx.ios;
 
                 acc.udp_tx.bytes += stats.udp_tx.bytes;
                 acc.udp_tx.datagrams += stats.udp_tx.datagrams;
-                acc.udp_tx.ios += stats.udp_tx.transmits;
+                acc.udp_tx.ios += stats.udp_tx.ios;
 
                 acc
             });
