@@ -32,13 +32,16 @@ use corro_types::{
 
 use bytes::Bytes;
 use corro_types::broadcast::Timestamp;
+use corro_types::{
+    spawn::spawn_counted,
+    tripwire::{Outcome, PreemptibleFutureExt, TimeoutFutureExt, Tripwire},
+};
 use foca::Notification;
 use indexmap::map::Entry;
 use indexmap::IndexMap;
 use metrics::{counter, gauge, histogram};
 use rand::{prelude::IteratorRandom, rngs::StdRng, SeedableRng};
 use rangemap::RangeInclusiveSet;
-use spawn::spawn_counted;
 use tokio::time::sleep;
 use tokio::{
     sync::mpsc::Receiver as TokioReceiver,
@@ -46,7 +49,6 @@ use tokio::{
 };
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{debug, debug_span, error, info, trace, warn, Instrument};
-use tripwire::{Outcome, PreemptibleFutureExt, TimeoutFutureExt, Tripwire};
 
 /// Spawn a tree of tasks that handles incoming gossip server
 /// connections, streams, and their respective payloads.
@@ -194,7 +196,7 @@ pub fn spawn_swim_announcer(agent: &Agent, gossip_addr: SocketAddr, mut tripwire
     tokio::spawn({
         let agent = agent.clone();
         async move {
-            let mut boff = backoff::Backoff::new(10)
+            let mut boff = corro_types::backoff::Backoff::new(10)
                 .timeout_range(Duration::from_secs(5), Duration::from_secs(120))
                 .iter();
             let timer = tokio::time::sleep(Duration::new(0, 0));

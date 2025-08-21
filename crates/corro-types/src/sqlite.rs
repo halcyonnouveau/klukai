@@ -3,13 +3,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::sqlite_pool::{self, Committable, SqliteConn};
 use once_cell::sync::Lazy;
 use rusqlite::{
     functions::FunctionFlags, params, trace::TraceEventCodes, Connection, Error, Result,
     Transaction,
 };
 use serde_json::Value;
-use sqlite_pool::{Committable, SqliteConn};
 use tempfile::TempDir;
 use tracing::{error, info, trace, warn};
 
@@ -272,10 +272,10 @@ fn corro_json_contains(selector: Value, object: Value) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::sqlite_pool::Config;
+    use crate::sqlite_pool::InterruptibleTransaction;
     use futures::{stream::FuturesUnordered, TryStreamExt};
     use rusqlite::{Connection, Result};
-    use sqlite_pool::Config;
-    use sqlite_pool::InterruptibleTransaction;
     use tokio::task::block_in_place;
 
     use super::*;

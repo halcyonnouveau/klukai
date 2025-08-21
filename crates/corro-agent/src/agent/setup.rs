@@ -4,6 +4,7 @@
 use antithesis_sdk::assert_always;
 use arc_swap::ArcSwap;
 use camino::Utf8PathBuf;
+use corro_types::tripwire::Tripwire;
 use indexmap::IndexMap;
 use metrics::counter;
 use parking_lot::RwLock;
@@ -23,7 +24,6 @@ use tokio::{
     },
 };
 use tracing::{debug, error, info, trace, warn};
-use tripwire::Tripwire;
 
 // Internals
 use crate::{

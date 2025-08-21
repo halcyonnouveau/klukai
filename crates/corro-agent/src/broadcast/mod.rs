@@ -23,7 +23,6 @@ use metrics::{counter, gauge};
 use parking_lot::RwLock;
 use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use rusqlite::params;
-use spawn::spawn_counted;
 use speedy::Writable;
 use strum::EnumDiscriminants;
 use tokio::{
@@ -34,13 +33,14 @@ use tokio::{
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Encoder, LengthDelimitedCodec};
 use tracing::{debug, error, log::info, trace, warn};
-use tripwire::Tripwire;
 
 use corro_types::{
     actor::{Actor, ActorId},
     agent::Agent,
     broadcast::{BroadcastInput, DispatchRuntime, FocaCmd, FocaInput, UniPayload, UniPayloadV1},
     channel::{bounded, CorroReceiver, CorroSender},
+    spawn::spawn_counted,
+    tripwire::Tripwire,
 };
 
 use crate::{agent::util::log_at_pow_10, transport::Transport};
@@ -1193,7 +1193,7 @@ mod tests {
 
         tripwire_tx.send(()).await.ok();
         tripwire_worker.await;
-        spawn::wait_for_all_pending_handles().await;
+        corro_types::spawn::wait_for_all_pending_handles().await;
 
         Ok(())
     }

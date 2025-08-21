@@ -19,11 +19,10 @@ use corro_types::{
     config::{Config, PerfConfig},
 };
 
+use corro_types::{spawn::spawn_counted, tripwire::Tripwire};
 use futures::{FutureExt, StreamExt, TryStreamExt};
-use spawn::spawn_counted;
 use tokio::task::JoinHandle;
 use tracing::{error, info};
-use tripwire::Tripwire;
 
 /// Start a new agent with an existing configuration
 ///

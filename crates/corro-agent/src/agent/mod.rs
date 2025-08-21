@@ -47,6 +47,6 @@ where
     F::Output: Send,
 {
     fn execute(&self, fut: F) {
-        spawn::spawn_counted(fut);
+        corro_types::spawn::spawn_counted(fut);
     }
 }

@@ -3,7 +3,7 @@ use std::{convert::Infallible, path::PathBuf, time::Duration};
 use deadpool::managed::{QueueMode, Timeouts};
 use rusqlite::OpenFlags;
 
-use crate::{
+use super::{
     noop_transform, CreatePoolError, Manager, Pool, PoolBuilder, PoolConfig, Runtime, RusqlitePool,
     SqliteConn,
 };

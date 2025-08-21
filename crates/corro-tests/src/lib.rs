@@ -4,8 +4,8 @@ use corro_agent::agent::start_with_config;
 use corro_types::{
     agent::{Agent, Bookie},
     config::{Config, ConfigBuilder, ConfigBuilderError},
+    tripwire::Tripwire,
 };
-use tripwire::Tripwire;
 
 pub mod tempdir;
 use tempdir::TempDir;

@@ -39,7 +39,8 @@ use tokio::{
 };
 use tokio_util::sync::{CancellationToken, DropGuard};
 use tracing::{debug, error, trace, warn};
-use tripwire::Tripwire;
+
+use crate::tripwire::Tripwire;
 
 use crate::{
     actor::{Actor, ActorId, ClusterId},
@@ -53,6 +54,7 @@ use crate::{
         rusqlite_to_crsqlite, rusqlite_to_crsqlite_write, setup_conn, CrConn, Migration,
         SqlitePool, SqlitePoolError,
     },
+    sqlite_pool,
     updates::UpdatesManager,
 };
 

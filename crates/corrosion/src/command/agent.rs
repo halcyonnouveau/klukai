@@ -4,11 +4,14 @@ use crate::admin::{AdminConfig, TracingHandle};
 use antithesis_sdk::prelude::*;
 use build_info::VersionControl;
 use camino::Utf8PathBuf;
-use corro_types::config::{Config, PrometheusConfig};
+use corro_types::{
+    config::{Config, PrometheusConfig},
+    spawn::wait_for_all_pending_handles,
+    tripwire,
+};
 use metrics::gauge;
 use metrics_exporter_prometheus::{Matcher, PrometheusBuilder};
 use metrics_util::MetricKindMask;
-use spawn::wait_for_all_pending_handles;
 use tokio_metrics::RuntimeMonitor;
 use tracing::{error, info};
 // use tracing_filter::{legacy::Filter, FilterLayer};

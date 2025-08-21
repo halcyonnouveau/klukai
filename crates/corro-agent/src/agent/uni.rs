@@ -2,13 +2,13 @@ use corro_types::{
     actor::ClusterId,
     broadcast::{BroadcastV1, ChangeSource, ChangeV1, UniPayload, UniPayloadV1},
     channel::CorroSender,
+    tripwire::Tripwire,
 };
 use metrics::counter;
 use speedy::Readable;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 use tracing::{debug, error, trace};
-use tripwire::Tripwire;
 
 /// Spawn a task that accepts unidirectional broadcast streams, then
 /// spawns another task for each incoming stream to handle.

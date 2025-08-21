@@ -14,13 +14,11 @@ use rand::{
 use rangemap::RangeInclusiveSet;
 use serde::Deserialize;
 use serde_json::json;
-use spawn::wait_for_all_pending_handles;
 use tokio::{
     sync::mpsc,
     time::{sleep, timeout, MissedTickBehavior},
 };
 use tracing::{debug, info_span};
-use tripwire::Tripwire;
 use uuid::Uuid;
 
 use crate::{
@@ -32,19 +30,19 @@ use crate::{
     transport::Transport,
 };
 use corro_tests::*;
-use corro_types::change::Change;
 use corro_types::{
     actor::ActorId,
+    agent::Agent,
+    api::{ColumnName, TableName},
     api::{ExecResponse, ExecResult, Statement},
     base::{CrsqlDbVersion, CrsqlSeq},
     broadcast::{ChangeSource, ChangeV1, Changeset},
-    sync::generate_sync,
-};
-use corro_types::{
-    agent::Agent,
-    api::{ColumnName, TableName},
     change::row_to_change,
+    change::Change,
     pubsub::pack_columns,
+    spawn::wait_for_all_pending_handles,
+    sync::generate_sync,
+    tripwire::Tripwire,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

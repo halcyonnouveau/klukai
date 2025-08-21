@@ -2,6 +2,7 @@ use crate::api::peer::serve_sync;
 use corro_types::{
     agent::{Agent, Bookie},
     broadcast::{BiPayload, BiPayloadV1},
+    tripwire::Tripwire,
 };
 use metrics::counter;
 use speedy::Readable;
@@ -10,7 +11,6 @@ use tokio::time::timeout;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{FramedRead, LengthDelimitedCodec};
 use tracing::{debug, error, trace, warn};
-use tripwire::Tripwire;
 
 /// Spawn a task that listens for incoming bi-directional sync streams
 /// on a given connection.

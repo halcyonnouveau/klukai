@@ -16,8 +16,7 @@ mod tests {
     use super::*;
 
     use corro_tests::launch_test_agent;
-    use spawn::wait_for_all_pending_handles;
-    use tripwire::Tripwire;
+    use corro_types::{spawn::wait_for_all_pending_handles, tripwire::Tripwire};
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn basic_operations() -> eyre::Result<()> {

@@ -695,11 +695,11 @@ fn write_json_rows_as_array<W: Write, F: Formatter>(
 #[cfg(test)]
 mod tests {
     use corro_tests::launch_test_agent;
+    use corro_types::tripwire::Tripwire;
     use tokio::{
         sync::mpsc::{self, error::TryRecvError},
         task::block_in_place,
     };
-    use tripwire::Tripwire;
 
     use super::*;
 

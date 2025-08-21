@@ -15,9 +15,10 @@ use command::{
 use corro_client::CorrosionApiClient;
 use corro_types::{
     actor::{ActorId, ClusterId},
-    api::{ExecResult, QueryEvent, Statement, SqliteParam},
+    api::{ExecResult, QueryEvent, SqliteParam, Statement},
     base::CrsqlDbVersion,
     config::{default_admin_path, Config, ConfigError, LogFormat, OtelConfig},
+    sqlite3_restore,
 };
 use futures::StreamExt;
 use once_cell::sync::OnceCell;
@@ -41,7 +42,6 @@ use uuid::Uuid;
 
 pub mod admin;
 pub mod command;
-pub mod sqlite3_restore;
 pub mod tpl;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

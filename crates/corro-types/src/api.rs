@@ -36,7 +36,9 @@ pub mod sqlite {
     }
 
     impl FromSql for ChangeType {
-        fn column_result(value: rusqlite::types::ValueRef<'_>) -> rusqlite::types::FromSqlResult<Self> {
+        fn column_result(
+            value: rusqlite::types::ValueRef<'_>,
+        ) -> rusqlite::types::FromSqlResult<Self> {
             match value {
                 rusqlite::types::ValueRef::Integer(i) => Ok(ChangeType::from_repr(
                     i.try_into().map_err(|e| FromSqlError::Other(Box::new(e)))?,

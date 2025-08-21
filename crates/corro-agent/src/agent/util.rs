@@ -25,6 +25,7 @@ use corro_types::{
     channel::CorroReceiver,
     config::AuthzConfig,
     pubsub::SubsManager,
+    tripwire::Outcome,
     updates::{match_changes, match_changes_from_db_version},
 };
 
@@ -38,7 +39,12 @@ use axum::{
     routing::{get, post},
     BoxError, Extension, Router, TypedHeader,
 };
-use corro_types::broadcast::Timestamp;
+use corro_types::{
+    broadcast::Timestamp,
+    spawn::spawn_counted,
+    sqlite_pool::{Committable, InterruptibleTransaction},
+    tripwire::{PreemptibleFutureExt, Tripwire},
+};
 use foca::Member;
 use futures::FutureExt;
 use hyper::{server::conn::AddrIncoming, StatusCode};
@@ -46,8 +52,6 @@ use metrics::{counter, histogram};
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
 use rusqlite::{named_params, params, Connection};
 use serde_json::json;
-use spawn::spawn_counted;
-use sqlite_pool::{Committable, InterruptibleTransaction};
 use std::{
     cmp,
     collections::{BTreeMap, HashSet},
@@ -65,7 +69,6 @@ use tokio::{
 use tower::{limit::ConcurrencyLimitLayer, load_shed::LoadShedLayer};
 use tower_http::trace::TraceLayer;
 use tracing::{debug, error, info, trace, warn};
-use tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
 
 pub async fn initialise_foca(agent: &Agent) {
     let states = load_member_states(agent).await;
@@ -353,7 +356,7 @@ async fn require_authz<B>(
 pub async fn sync_loop(agent: Agent, bookie: Bookie, transport: Transport, mut tripwire: Tripwire) {
     let min_sync_backoff = Duration::from_secs(agent.config().perf.min_sync_backoff as u64);
     let max_sync_backoff = Duration::from_secs(agent.config().perf.max_sync_backoff as u64);
-    let mut sync_backoff = backoff::Backoff::new(0)
+    let mut sync_backoff = corro_types::backoff::Backoff::new(0)
         .timeout_range(min_sync_backoff, max_sync_backoff)
         .iter();
     let next_sync_at = tokio::time::sleep(sync_backoff.next().unwrap());
@@ -377,11 +380,11 @@ pub async fn sync_loop(agent: Agent, bookie: Bookie, transport: Transport, mut t
         .preemptible(&mut tripwire)
         .await
         {
-            tripwire::Outcome::Preempted(_) => {
+            corro_types::tripwire::Outcome::Preempted(_) => {
                 warn!("aborted sync by tripwire");
                 break;
             }
-            tripwire::Outcome::Completed(res) => match res {
+            corro_types::tripwire::Outcome::Completed(res) => match res {
                 Ok(Err(e)) => {
                     error!("could not sync: {e}");
                     // keep syncing until we successfully sync

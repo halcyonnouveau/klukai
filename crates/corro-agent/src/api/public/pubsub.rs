@@ -3,12 +3,13 @@ use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 use axum::{http::StatusCode, response::IntoResponse, Extension};
 use bytes::{BufMut, Bytes, BytesMut};
 use compact_str::{format_compact, ToCompactString};
-use corro_types::updates::Handle;
 use corro_types::{
     agent::Agent,
     api::{ChangeId, QueryEvent, QueryEventMeta, Statement},
     pubsub::{MatcherCreated, MatcherError, MatcherHandle, NormalizeStatementError, SubsManager},
     sqlite::SqlitePoolError,
+    tripwire::Tripwire,
+    updates::Handle,
 };
 use futures::future::poll_fn;
 use rusqlite::Connection;
@@ -23,7 +24,6 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-use tripwire::Tripwire;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
@@ -888,6 +888,8 @@ mod tests {
     use corro_types::base::{CrsqlDbVersion, CrsqlSeq};
     use corro_types::broadcast::{ChangeSource, ChangeV1, Changeset};
     use corro_types::change::Change;
+    use corro_types::corro_types::spawn::wait_for_all_pending_handles;
+    use corro_types::corro_types::tripwire::Tripwire;
     use corro_types::pubsub::pack_columns;
     use corro_types::{
         api::{ChangeId, RowId},
@@ -896,12 +898,10 @@ mod tests {
     };
     use http_body::Body;
     use serde::de::DeserializeOwned;
-    use spawn::wait_for_all_pending_handles;
     use std::ops::RangeInclusive;
     use std::time::Instant;
     use tokio::time::timeout;
     use tokio_util::codec::{Decoder, LinesCodec};
-    use tripwire::Tripwire;
 
     use super::*;
     use crate::agent::process_multiple_changes;

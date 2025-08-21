@@ -7,13 +7,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::api::{ChangeId, ColumnName, ColumnType, RowId, SqliteValue, SqliteValueRef, TableName};
+use crate::spawn::spawn_counted;
+use crate::sqlite_pool::{self, RusqlitePool};
+use crate::tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
 use async_trait::async_trait;
 use bytes::{Buf, BufMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{format_compact, ToCompactString};
-use crate::api::{
-    ChangeId, ColumnName, ColumnType, RowId, SqliteValue, SqliteValueRef, TableName,
-};
 use enquote::unquote;
 use fallible_iterator::FallibleIterator;
 use indexmap::{IndexMap, IndexSet};
@@ -24,7 +25,6 @@ use rusqlite::{
     types::{FromSqlError, ValueRef},
     Connection, OptionalExtension,
 };
-use spawn::spawn_counted;
 use sqlite3_parser::{
     ast::{
         As, Cmd, Expr, FromClause, JoinConstraint, JoinOperator, JoinType, JoinedSelectTable, Name,
@@ -32,14 +32,12 @@ use sqlite3_parser::{
     },
     lexer::sql::Parser,
 };
-use sqlite_pool::RusqlitePool;
 use tokio::{
     sync::{mpsc, watch, AcquireError},
     task::block_in_place,
 };
 use tokio_util::sync::{CancellationToken, DropGuard, WaitForCancellationFuture};
 use tracing::{debug, error, info, trace, warn};
-use tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
 use uuid::Uuid;
 
 use crate::{
@@ -51,8 +49,8 @@ use crate::{
     updates::HandleMetrics,
 };
 
-use crate::updates::{Handle, Manager};
 pub use crate::api::sqlite::ChangeType;
+use crate::updates::{Handle, Manager};
 
 #[derive(Debug, Default, Clone)]
 pub struct SubsManager(Arc<RwLock<InnerSubsManager>>);
@@ -2382,9 +2380,9 @@ pub fn unpack_columns(mut buf: &[u8]) -> Result<Vec<SqliteValueRef<'_>>, UnpackE
 mod tests {
     use std::net::Ipv4Addr;
 
+    use crate::spawn::wait_for_all_pending_handles;
     use camino::Utf8PathBuf;
     use rusqlite::params;
-    use spawn::wait_for_all_pending_handles;
     use tokio::sync::Semaphore;
 
     use crate::{

@@ -111,12 +111,7 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dafc0460f582169b1414074fd82bedbda60456fb4df0a78dc7fef1306e732ea3"
 dependencies = [
- "libc",
- "libloading",
- "linkme",
- "once_cell",
  "rand 0.8.5",
- "rustc_version_runtime",
  "serde",
  "serde_json",
 ]
@@ -170,29 +165,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "assert2"
-version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d6c710e60d14b07d8f42d0e702b16120865eea39edb751e75cd6bf401d18f14"
-dependencies = [
- "assert2-macros",
- "diff",
- "yansi",
-]
-
-[[package]]
-name = "assert2-macros"
-version = "0.3.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9008cbbba9e1d655538870b91fd93814bd82e6968f27788fc734375120ac6f57"
-dependencies = [
- "proc-macro2",
- "quote",
- "rustc_version",
- "syn 2.0.104",
 ]
 
 [[package]]
@@ -292,13 +264,6 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "backoff"
-version = "0.1.0"
-dependencies = [
- "rand 0.8.5",
 ]
 
 [[package]]
@@ -686,7 +651,6 @@ dependencies = [
  "antithesis_sdk",
  "arc-swap",
  "axum",
- "backoff",
  "bincode",
  "bytes",
  "camino",
@@ -720,8 +684,6 @@ dependencies = [
  "seahash",
  "serde",
  "serde_json",
- "spawn",
- "sqlite-pool",
  "sqlite3-parser",
  "strum",
  "tempfile",
@@ -735,7 +697,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "tripwire",
  "uhlc",
  "uuid",
 ]
@@ -754,7 +715,6 @@ dependencies = [
  "pin-project-lite",
  "serde",
  "serde_json",
- "sqlite-pool",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
@@ -797,7 +757,6 @@ dependencies = [
  "eyre",
  "tempfile",
  "tokio",
- "tripwire",
 ]
 
 [[package]]
@@ -819,13 +778,16 @@ dependencies = [
  "fallible-iterator",
  "foca",
  "futures",
+ "futures-util",
  "hex",
  "indexmap 2.10.0",
  "itertools",
  "metrics",
+ "nix",
  "once_cell",
  "opentelemetry",
  "parking_lot",
+ "pin-project-lite",
  "rand 0.8.5",
  "rangemap",
  "rcgen",
@@ -835,18 +797,16 @@ dependencies = [
  "serde_json",
  "serde_with",
  "smallvec",
- "spawn",
- "sqlite-pool",
  "sqlite3-parser",
  "strum",
  "tempfile",
  "thiserror 1.0.69",
  "time",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "tripwire",
  "uhlc",
  "uuid",
 ]
@@ -879,7 +839,6 @@ dependencies = [
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-util",
- "nix",
  "notify",
  "notify-debouncer-mini",
  "once_cell",
@@ -895,7 +854,6 @@ dependencies = [
  "serde_json",
  "shell-words",
  "shellwords",
- "spawn",
  "tempfile",
  "thiserror 1.0.69",
  "tikv-jemallocator",
@@ -908,7 +866,6 @@ dependencies = [
  "tracing-filter",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "tripwire",
  "uuid",
 ]
 
@@ -1991,12 +1948,11 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "corro-tests",
+ "corro-types",
  "escargot",
  "once_cell",
- "spawn",
  "tokio",
  "tracing-subscriber",
- "tripwire",
 ]
 
 [[package]]
@@ -2120,16 +2076,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libloading"
-version = "0.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
-dependencies = [
- "cfg-if",
- "windows-targets 0.53.3",
-]
-
-[[package]]
 name = "libredox"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2168,26 +2114,6 @@ name = "linked-hash-map"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
-
-[[package]]
-name = "linkme"
-version = "0.3.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1b1703c00b2a6a70738920544aa51652532cacddfec2e162d2e29eae01e665c"
-dependencies = [
- "linkme-impl",
-]
-
-[[package]]
-name = "linkme-impl"
-version = "0.3.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04d55ca5d5a14363da83bf3c33874b8feaa34653e760d5216d7ef9829c88001a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.104",
-]
 
 [[package]]
 name = "linux-raw-sys"
@@ -3369,16 +3295,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustc_version_runtime"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dd18cd2bae1820af0b6ad5e54f4a51d0f3fcc53b05f845675074efcc7af071d"
-dependencies = [
- "rustc_version",
- "semver",
-]
-
-[[package]]
 name = "rusticata-macros"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3778,16 +3694,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spawn"
-version = "0.1.0"
-dependencies = [
- "futures",
- "pin-project-lite",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "speedy-derive"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3817,22 +3723,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d96d2d1d716fb500937168cc09353ffdc7a012be8475ac7308e1bdf0e3923300"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "sqlite-pool"
-version = "0.1.0"
-dependencies = [
- "arc-swap",
- "corro-types",
- "deadpool",
- "eyre",
- "metrics",
- "rusqlite",
- "tempfile",
- "tokio",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -4472,19 +4362,6 @@ dependencies = [
  "tracing-core",
  "tracing-log 0.2.0",
  "tracing-serde",
-]
-
-[[package]]
-name = "tripwire"
-version = "0.1.0-alpha.0"
-dependencies = [
- "assert2",
- "futures",
- "futures-util",
- "pin-project-lite",
- "tokio",
- "tokio-stream",
- "tracing",
 ]
 
 [[package]]

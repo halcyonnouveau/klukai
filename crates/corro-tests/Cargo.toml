@@ -10,4 +10,3 @@ corro-types = { path = "../corro-types" }
 eyre = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true }
-tripwire = { path = "../tripwire" }

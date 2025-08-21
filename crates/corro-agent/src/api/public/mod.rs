@@ -21,12 +21,14 @@ use corro_types::{
     schema::{apply_schema, parse_sql},
     sqlite::SqlitePoolError,
 };
+use corro_types::{
+    spawn::spawn_counted,
+    sqlite_pool::{Committable, InterruptibleTransaction},
+};
 use hyper::StatusCode;
 use metrics::{counter, histogram};
 use rusqlite::{params_from_iter, ToSql, Transaction};
 use serde::Deserialize;
-use spawn::spawn_counted;
-use sqlite_pool::{Committable, InterruptibleTransaction};
 
 use tokio::{
     sync::{
@@ -704,6 +706,7 @@ pub async fn api_v1_table_stats(
 
 #[cfg(test)]
 mod tests {
+    use corro_types::corro_types::tripwire::Tripwire;
     use corro_types::{
         api::RowId,
         base::CrsqlDbVersion,
@@ -714,7 +717,6 @@ mod tests {
     use http_body::Body;
     use tokio::sync::mpsc::error::TryRecvError;
     use tokio_util::codec::{Decoder, LinesCodec};
-    use tripwire::Tripwire;
 
     use super::*;
 

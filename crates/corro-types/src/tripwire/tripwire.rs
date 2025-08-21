@@ -12,7 +12,7 @@ use tokio::{
 use tokio_stream::wrappers::{ReceiverStream, WatchStream};
 use tracing::{debug, warn};
 
-use crate::signalstream::SignalStream;
+use crate::tripwire::signalstream::SignalStream;
 
 /// A `Future` that completes once the program is requested to shutdown. This
 /// gives a chance for other `Futures` to do additional cleanup before being

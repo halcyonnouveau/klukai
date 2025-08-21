@@ -6,9 +6,8 @@ edition = "2021"
 [dependencies]
 assert_cmd = "2.0.12"
 corro-tests = { path = "../crates/corro-tests" }
+corro-types = { path = "../crates/corro-types" }
 escargot = "0.5.8"
-spawn = { path = "../crates/spawn" }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }
-tripwire = { path = "../crates/tripwire" }
 once_cell = { workspace = true }

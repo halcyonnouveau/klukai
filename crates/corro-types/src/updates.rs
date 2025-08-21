@@ -2,19 +2,20 @@
 
 use crate::actor::ActorId;
 use crate::agent::SplitPool;
+use crate::api::sqlite::ChangeType;
+use crate::api::{ColumnName, NotifyEvent, SqliteValueRef, TableName};
 use crate::base::CrsqlDbVersion;
 use crate::change::Change;
 use crate::pubsub::{unpack_columns, MatchCandidates, MatchableChange, MatcherError};
 use crate::schema::Schema;
+use crate::spawn::spawn_counted;
+use crate::tripwire::Tripwire;
 use antithesis_sdk::assert_sometimes;
 use async_trait::async_trait;
-use crate::api::sqlite::ChangeType;
-use crate::api::{ColumnName, NotifyEvent, SqliteValueRef, TableName};
 use indexmap::{map::Entry, IndexMap};
 use metrics::{counter, histogram, Counter};
 use parking_lot::RwLock;
 use rusqlite::Connection;
-use spawn::spawn_counted;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -24,7 +25,6 @@ use tokio::task::block_in_place;
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 use tracing::{debug, error, info, trace, warn};
-use tripwire::Tripwire;
 use uuid::Uuid;
 
 pub trait Manager<H> {

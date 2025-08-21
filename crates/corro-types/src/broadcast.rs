@@ -6,9 +6,9 @@ use std::{
     time::Duration,
 };
 
+use crate::api::{ColumnName, SqliteValue};
 use antithesis_sdk::assert_sometimes;
 use bytes::{Bytes, BytesMut};
-use crate::api::{ColumnName, SqliteValue};
 use foca::{Identity, Member, Notification, Runtime, Timer};
 use itertools::Itertools;
 use metrics::counter;

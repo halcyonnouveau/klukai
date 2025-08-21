@@ -7,6 +7,7 @@ use compact_str::ToCompactString;
 use corro_types::{
     agent::Agent,
     api::NotifyEvent,
+    tripwire::Tripwire,
     updates::{Handle, UpdateCreated, UpdateHandle, UpdatesManager},
 };
 use futures::future::poll_fn;
@@ -15,7 +16,6 @@ use tokio::sync::{
     mpsc, RwLock as TokioRwLock,
 };
 use tracing::{debug, info, warn};
-use tripwire::Tripwire;
 use uuid::Uuid;
 
 use crate::api::public::pubsub::MatcherUpsertError;

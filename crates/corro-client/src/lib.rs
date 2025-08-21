@@ -362,28 +362,31 @@ impl CorrosionApiClient {
 #[derive(Clone)]
 pub struct CorrosionClient {
     api_client: CorrosionApiClient,
-    pool: sqlite_pool::RusqlitePool,
+    pool: corro_types::sqlite_pool::RusqlitePool,
 }
 
 impl CorrosionClient {
     pub fn new<P: AsRef<Path>>(api_addr: SocketAddr, db_path: P) -> Self {
         Self {
             api_client: CorrosionApiClient::new(api_addr),
-            pool: sqlite_pool::Config::new(db_path.as_ref())
+            pool: corro_types::sqlite_pool::Config::new(db_path.as_ref())
                 .max_size(5)
                 .create_pool()
                 .expect("could not build pool, this can't fail because we specified a runtime"),
         }
     }
 
-    pub fn with_sqlite_pool(api_addr: SocketAddr, pool: sqlite_pool::RusqlitePool) -> Self {
+    pub fn with_sqlite_pool(
+        api_addr: SocketAddr,
+        pool: corro_types::sqlite_pool::RusqlitePool,
+    ) -> Self {
         Self {
             api_client: CorrosionApiClient::new(api_addr),
             pool,
         }
     }
 
-    pub fn pool(&self) -> &sqlite_pool::RusqlitePool {
+    pub fn pool(&self) -> &corro_types::sqlite_pool::RusqlitePool {
         &self.pool
     }
 }

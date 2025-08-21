@@ -124,7 +124,7 @@ mod tests {
         time::Duration,
     };
 
-    use crate::{Outcome, PreemptibleFutureExt, Tripwire};
+    use crate::tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
     use assert2::let_assert;
 
     #[tokio::test]
