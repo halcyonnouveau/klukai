@@ -207,6 +207,12 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
                     );
                 }
 
+                if let Err(e) = conn.execute_batch(
+                    "DROP TABLE __corro_consul_services; DROP TABLE __corro_consul_checks;",
+                ) {
+                    warn!(error = %e, "could not drop consul services and checks hash tables, probably because they were never created");
+                }
+
                 conn.execute_batch(
                     r#"
                     PRAGMA journal_mode = WAL; -- so the restore can be done online
@@ -348,6 +354,16 @@ async fn process_cli(cli: Cli) -> eyre::Result<()> {
             )))
             .await?;
         }
+        Command::Consul(cmd) => match cmd {
+            ConsulCommand::Sync => match cli.config()?.consul.as_ref() {
+                Some(consul) => {
+                    command::consul::sync::run(consul, cli.api_addr()?, cli.db_path()?).await?
+                }
+                None => {
+                    error!("missing `consul` block in corrosion config");
+                }
+            },
+        },
         Command::Query {
             query,
             columns: show_columns,
@@ -643,6 +659,10 @@ enum Command {
     #[command(subcommand)]
     Cluster(ClusterCommand),
 
+    /// Consul interactions
+    #[command(subcommand)]
+    Consul(ConsulCommand),
+
     /// Query data from Corrosion w/ a SQL statement
     Query {
         query: String,
@@ -717,6 +737,12 @@ enum ClusterCommand {
     MembershipStates,
     /// Set a new cluster ID for the node
     SetId { cluster_id: u16 },
+}
+
+#[derive(Subcommand)]
+enum ConsulCommand {
+    /// Synchronizes the local consul agent with Corrosion
+    Sync,
 }
 
 #[derive(Subcommand)]

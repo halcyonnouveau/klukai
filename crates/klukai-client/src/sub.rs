@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    future::Future,
     io,
     net::SocketAddr,
     pin::Pin,
@@ -7,9 +8,19 @@ use std::{
     time::Duration,
 };
 
+type ResponseFuture = Pin<
+    Box<
+        dyn Future<Output = Result<hyper::Response<Incoming>, hyper_util::client::legacy::Error>>
+            + Send
+            + Sync,
+    >,
+>;
+
 use bytes::{Buf, Bytes, BytesMut};
-use futures::{Future, Stream, ready};
-use hyper::{Body, client::HttpConnector};
+use futures::{Stream, ready};
+use http_body_util::Full;
+use hyper::body::{Body, Incoming};
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use klukai_types::api::{ChangeId, QueryEvent, TypedNotifyEvent, TypedQueryEvent};
 use pin_project_lite::pin_project;
 use serde::de::DeserializeOwned;
@@ -24,7 +35,7 @@ use uuid::Uuid;
 pin_project! {
     pub struct IoBodyStream {
         #[pin]
-        body: Body
+        body: Incoming
     }
 }
 
@@ -33,9 +44,16 @@ impl Stream for IoBodyStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        let res = ready!(this.body.poll_next(cx));
-        match res {
-            Some(Ok(b)) => Poll::Ready(Some(Ok(b))),
+
+        match ready!(this.body.poll_frame(cx)) {
+            Some(Ok(frame)) => {
+                if let Ok(data) = frame.into_data() {
+                    Poll::Ready(Some(Ok(data)))
+                } else {
+                    // Skip non-data frames, continue polling
+                    Poll::Pending
+                }
+            }
             Some(Err(e)) => {
                 let io_err = match e
                     .source()
@@ -57,14 +75,14 @@ type FramedBody = FramedRead<IoBodyStreamReader, LinesBytesCodec>;
 pub struct SubscriptionStream<T> {
     id: Uuid,
     hash: Option<String>,
-    client: hyper::Client<HttpConnector, Body>,
+    client: Client<HttpConnector, Full<Bytes>>,
     api_addr: SocketAddr,
     observed_eoq: bool,
     last_change_id: Option<ChangeId>,
     stream: Option<FramedBody>,
     backoff: Option<Pin<Box<Sleep>>>,
     backoff_count: u32,
-    response: Option<hyper::client::ResponseFuture>,
+    response: Option<ResponseFuture>,
     _deser: std::marker::PhantomData<T>,
 }
 
@@ -73,7 +91,7 @@ pub enum SubscriptionError {
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
-    Http(#[from] http::Error),
+    Http(#[from] hyper::http::Error),
     #[error(transparent)]
     Deserialize(#[from] serde_json::Error),
     #[error("missed a change (expected: {expected}, got: {got}), inconsistent state")]
@@ -93,9 +111,9 @@ where
     pub fn new(
         id: Uuid,
         hash: Option<String>,
-        client: hyper::Client<HttpConnector, Body>,
+        client: Client<HttpConnector, Full<Bytes>>,
         api_addr: SocketAddr,
-        body: hyper::Body,
+        body: Incoming,
         change_id: Option<ChangeId>,
     ) -> Self {
         Self {
@@ -251,9 +269,9 @@ where
                         self.last_change_id.unwrap_or_default()
                     ))
                     .header(hyper::header::ACCEPT, "application/json")
-                    .body(hyper::Body::empty())?;
+                    .body(Full::new(Bytes::new()))?;
 
-                let response = self.client.request(req);
+                let response = Box::pin(self.client.request(req));
                 self.response = Some(response);
                 // loop around!
             } else {
@@ -327,7 +345,7 @@ impl<T> UpdatesStream<T>
 where
     T: DeserializeOwned + Unpin,
 {
-    pub fn new(id: Uuid, body: hyper::Body) -> Self {
+    pub fn new(id: Uuid, body: Incoming) -> Self {
         Self {
             id,
             stream: FramedRead::new(
@@ -386,7 +404,7 @@ impl<T> QueryStream<T>
 where
     T: DeserializeOwned + Unpin,
 {
-    pub fn new(body: hyper::Body) -> Self {
+    pub fn new(body: Incoming) -> Self {
         Self {
             stream: FramedRead::new(
                 StreamReader::new(IoBodyStream { body }),

@@ -6,8 +6,12 @@ use std::{
 };
 
 use axum::Extension;
+use bytes;
 use futures::{StreamExt, TryStreamExt, future, stream::FuturesUnordered};
+use http_body_util::BodyExt;
 use hyper::StatusCode;
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
+use hyper_util::rt::TokioExecutor;
 use rand::{
     SeedableRng, distributions::Uniform, prelude::Distribution, rngs::StdRng, seq::IteratorRandom,
 };
@@ -59,10 +63,11 @@ async fn insert_rows_and_gossip() -> eyre::Result<()> {
     )
     .await?;
 
-    let client = hyper::Client::builder()
-        .pool_max_idle_per_host(5)
-        .pool_idle_timeout(Duration::from_secs(300))
-        .build_http::<hyper::Body>();
+    let client: Client<HttpConnector, http_body_util::Full<bytes::Bytes>> =
+        Client::builder(TokioExecutor::new())
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Duration::from_secs(300))
+            .build(HttpConnector::new());
 
     let req_body: Vec<Statement> = serde_json::from_value(json!([[
         "INSERT INTO tests (id,text) VALUES (?,?)",
@@ -81,8 +86,7 @@ async fn insert_rows_and_gossip() -> eyre::Result<()> {
     )
     .await??;
 
-    let body: ExecResponse =
-        serde_json::from_slice(&hyper::body::to_bytes(res.into_body()).await?)?;
+    let body: ExecResponse = serde_json::from_slice(&res.into_body().collect().await?.to_bytes())?;
 
     let db_version: CrsqlDbVersion =
         ta1.agent
@@ -139,8 +143,7 @@ async fn insert_rows_and_gossip() -> eyre::Result<()> {
         )
         .await?;
 
-    let body: ExecResponse =
-        serde_json::from_slice(&hyper::body::to_bytes(res.into_body()).await?)?;
+    let body: ExecResponse = serde_json::from_slice(&res.into_body().collect().await?.to_bytes())?;
 
     println!("body: {body:?}");
 
@@ -329,7 +332,8 @@ pub async fn configurable_stress_test(
     })
     .await?;
 
-    let client: hyper::Client<_, hyper::Body> = hyper::Client::builder().build_http();
+    let client: Client<HttpConnector, http_body_util::Full<bytes::Bytes>> =
+        Client::builder(TokioExecutor::new()).build(HttpConnector::new());
 
     let addrs: Vec<(ActorId, SocketAddr)> = agents
         .iter()
@@ -359,7 +363,8 @@ pub async fn configurable_stress_test(
     });
 
     let actor_versions = {
-        let client: hyper::Client<_, hyper::Body> = hyper::Client::builder().build_http();
+        let client: Client<HttpConnector, http_body_util::Full<bytes::Bytes>> =
+            Client::builder(TokioExecutor::new()).build(HttpConnector::new());
 
         tokio_stream::StreamExt::map(futures::stream::iter(iter).chunks(20), {
             let addrs = addrs.clone();
@@ -386,7 +391,7 @@ pub async fn configurable_stress_test(
                     }
 
                     let body: ExecResponse =
-                        serde_json::from_slice(&hyper::body::to_bytes(res.into_body()).await?)?;
+                        serde_json::from_slice(&res.into_body().collect().await?.to_bytes())?;
 
                     for (i, statement) in statements.iter().enumerate() {
                         if !matches!(
@@ -601,10 +606,11 @@ async fn large_tx_sync() -> eyre::Result<()> {
     let (tripwire, tripwire_worker, tripwire_tx) = Tripwire::new_simple();
     let ta1 = launch_test_agent(|conf| conf.build(), tripwire.clone()).await?;
 
-    let client = hyper::Client::builder()
-        .pool_max_idle_per_host(5)
-        .pool_idle_timeout(Duration::from_secs(300))
-        .build_http::<hyper::Body>();
+    let client: Client<HttpConnector, http_body_util::Full<bytes::Bytes>> =
+        Client::builder(TokioExecutor::new())
+            .pool_max_idle_per_host(5)
+            .pool_idle_timeout(Duration::from_secs(300))
+            .build(HttpConnector::new());
 
     let counts = [
         10000, 1000, 900, 800, 700, 600, 500, 400, 300, 200, 100, 1000, 900, 800, 700, 600, 500,
@@ -633,7 +639,7 @@ async fn large_tx_sync() -> eyre::Result<()> {
         .await??;
 
         let body: ExecResponse =
-            serde_json::from_slice(&hyper::body::to_bytes(res.into_body()).await?)?;
+            serde_json::from_slice(&res.into_body().collect().await?.to_bytes())?;
 
         println!("body: {body:?}");
     }
@@ -1397,7 +1403,8 @@ async fn many_small_changes() -> eyre::Result<()> {
         start_id += 100000;
         async move {
             tokio::spawn(async move {
-                let client: hyper::Client<_, hyper::Body> = hyper::Client::builder().build_http();
+                let client: Client<HttpConnector, http_body_util::Full<bytes::Bytes>> =
+                    Client::builder(TokioExecutor::new()).build(HttpConnector::new());
 
                 let durs = {
                     let between = Uniform::from(100..=1000);
@@ -1436,7 +1443,7 @@ async fn many_small_changes() -> eyre::Result<()> {
                         }
 
                         let body: ExecResponse =
-                            serde_json::from_slice(&hyper::body::to_bytes(res.into_body()).await?)?;
+                            serde_json::from_slice(&res.into_body().collect().await?.to_bytes())?;
 
                         match &body.results[0] {
                             ExecResult::Execute { .. } => {}

@@ -6,9 +6,10 @@ use std::{
 };
 
 use antithesis_sdk::assert_sometimes;
-use axum::{Extension, extract::ConnectInfo, response::IntoResponse};
+use axum::{Extension, extract::ConnectInfo};
 use bytes::{BufMut, BytesMut};
 use compact_str::ToCompactString;
+use http_body_util::StreamBody;
 use hyper::StatusCode;
 use klukai_types::{
     agent::{Agent, ChangeError},
@@ -29,6 +30,7 @@ use klukai_types::{
 use metrics::{counter, histogram};
 use rusqlite::{ToSql, Transaction, params_from_iter};
 use serde::Deserialize;
+use tokio_stream::wrappers::ReceiverStream;
 
 use tokio::{
     sync::{
@@ -470,14 +472,21 @@ pub async fn api_v1_queries(
     ConnectInfo(client_addr): ConnectInfo<SocketAddr>,
     axum::extract::Query(params): axum::extract::Query<TimeoutParams>,
     axum::extract::Json(stmt): axum::extract::Json<Statement>,
-) -> impl IntoResponse {
-    let (mut tx, body) = hyper::Body::channel();
-
+) -> impl axum::response::IntoResponse {
     counter!("corro.api.queries.count").increment(1);
-    // TODO: timeout on data send instead of infinitely waiting for channel space.
     let (data_tx, mut data_rx) = channel(512);
 
     let start = Instant::now();
+
+    // Create a channel for streaming
+    let (stream_tx, stream_rx) =
+        tokio::sync::mpsc::channel::<Result<hyper::body::Frame<bytes::Bytes>, std::io::Error>>(512);
+
+    // Create a streaming body from the receiver
+    let stream = ReceiverStream::new(stream_rx);
+    let body = StreamBody::new(stream);
+
+    let stream_tx_clone = stream_tx.clone();
     tokio::spawn(async move {
         let mut buf = BytesMut::new();
 
@@ -485,14 +494,12 @@ pub async fn api_v1_queries(
             {
                 let mut writer = (&mut buf).writer();
                 if let Err(e) = serde_json::to_writer(&mut writer, &row_res) {
-                    _ = tx
-                        .send_data(
-                            serde_json::to_vec(&serde_json::json!(QueryEvent::Error(
-                                e.to_compact_string()
-                            )))
-                            .expect("could not serialize error json")
-                            .into(),
-                        )
+                    let error_json = serde_json::to_vec(&serde_json::json!(QueryEvent::Error(
+                        e.to_compact_string()
+                    )))
+                    .expect("could not serialize error json");
+                    let _ = stream_tx_clone
+                        .send(Ok(hyper::body::Frame::data(bytes::Bytes::from(error_json))))
                         .await;
                     return;
                 }
@@ -500,8 +507,12 @@ pub async fn api_v1_queries(
 
             buf.extend_from_slice(b"\n");
 
-            if let Err(e) = tx.send_data(buf.split().freeze()).await {
-                error!("could not send data through body's channel: {e}");
+            if stream_tx_clone
+                .send(Ok(hyper::body::Frame::data(buf.split().freeze())))
+                .await
+                .is_err()
+            {
+                error!("could not send data through stream channel");
                 return;
             }
         }
@@ -515,24 +526,33 @@ pub async fn api_v1_queries(
         Ok(_) => {
             histogram!("corro.api.queries.processing.time.seconds", "result" => "success")
                 .record(start.elapsed());
-            #[allow(clippy::needless_return)]
-            return hyper::Response::builder()
+            hyper::Response::builder()
                 .status(StatusCode::OK)
                 .body(body)
-                .expect("could not build query response body");
+                .expect("could not build query response body")
         }
         Err((status, res)) => {
             histogram!("corro.api.queries.processing.time.seconds", "result" => "error")
                 .record(start.elapsed());
-            #[allow(clippy::needless_return)]
-            return hyper::Response::builder()
+
+            // For error responses, we need to create a new stream with the error data
+            let error_bytes =
+                serde_json::to_vec(&res).expect("could not serialize query error response");
+            let (error_tx, error_rx) = tokio::sync::mpsc::channel::<
+                Result<hyper::body::Frame<bytes::Bytes>, std::io::Error>,
+            >(1);
+            let _ = error_tx
+                .send(Ok(hyper::body::Frame::data(bytes::Bytes::from(
+                    error_bytes,
+                ))))
+                .await;
+            let error_stream = ReceiverStream::new(error_rx);
+            let error_body = StreamBody::new(error_stream);
+
+            hyper::Response::builder()
                 .status(status)
-                .body(
-                    serde_json::to_vec(&res)
-                        .expect("could not serialize query error response")
-                        .into(),
-                )
-                .expect("could not build query response body");
+                .body(error_body)
+                .expect("could not build query response body")
         }
     }
 }
@@ -704,14 +724,15 @@ pub async fn api_v1_table_stats(
 
 #[cfg(test)]
 mod tests {
-    use http_body::Body;
-    use klukai_types::tripwire::Tripwire;
+    use axum::response::IntoResponse;
+    use http_body_util::BodyExt;
     use klukai_types::{
         api::RowId,
         base::CrsqlDbVersion,
         broadcast::{BroadcastInput, BroadcastV1, ChangeV1, Changeset},
         config::Config,
         schema::SqliteType,
+        tripwire::Tripwire,
     };
     use tokio::sync::mpsc::error::TryRecvError;
     use tokio_util::codec::{Decoder, LinesCodec};
@@ -876,7 +897,12 @@ mod tests {
 
         let mut buf = BytesMut::new();
 
-        buf.extend_from_slice(&body.data().await.unwrap()?);
+        if let Some(frame) = body.frame().await
+            && let Ok(frame) = frame
+            && let Some(data) = frame.data_ref()
+        {
+            buf.extend_from_slice(data);
+        }
 
         let s = lines.decode(&mut buf).unwrap().unwrap();
 
@@ -884,7 +910,12 @@ mod tests {
 
         assert_eq!(cols, QueryEvent::Columns(vec!["id".into(), "text".into()]));
 
-        buf.extend_from_slice(&body.data().await.unwrap()?);
+        if let Some(frame) = body.frame().await
+            && let Ok(frame) = frame
+            && let Some(data) = frame.data_ref()
+        {
+            buf.extend_from_slice(data);
+        }
 
         let s = lines.decode(&mut buf).unwrap().unwrap();
 
@@ -895,7 +926,12 @@ mod tests {
             QueryEvent::Row(RowId(1), vec!["service-id".into(), "service-name".into()])
         );
 
-        buf.extend_from_slice(&body.data().await.unwrap()?);
+        if let Some(frame) = body.frame().await
+            && let Ok(frame) = frame
+            && let Some(data) = frame.data_ref()
+        {
+            buf.extend_from_slice(data);
+        }
 
         let s = lines.decode(&mut buf).unwrap().unwrap();
 
@@ -909,7 +945,12 @@ mod tests {
             )
         );
 
-        buf.extend_from_slice(&body.data().await.unwrap()?);
+        if let Some(frame) = body.frame().await
+            && let Ok(frame) = frame
+            && let Some(data) = frame.data_ref()
+        {
+            buf.extend_from_slice(data);
+        }
 
         let s = lines.decode(&mut buf).unwrap().unwrap();
 
@@ -917,7 +958,7 @@ mod tests {
 
         assert!(matches!(query_evt, QueryEvent::EndOfQuery { .. }));
 
-        assert!(body.data().await.is_none());
+        assert!(body.frame().await.is_none());
 
         Ok(())
     }

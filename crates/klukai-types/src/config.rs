@@ -75,6 +75,9 @@ pub struct Config {
 
     #[serde(default)]
     pub log: LogConfig,
+
+    #[serde(default)]
+    pub consul: Option<ConsulConfig>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -321,6 +324,7 @@ pub struct ConfigBuilder {
     max_change_size: Option<i64>,
     tls: Option<TlsConfig>,
     perf: Option<PerfConfig>,
+    consul: Option<ConsulConfig>,
 }
 
 impl ConfigBuilder {
@@ -374,6 +378,11 @@ impl ConfigBuilder {
         self
     }
 
+    pub fn consul(mut self, config: ConsulConfig) -> Self {
+        self.consul = Some(config);
+        self
+    }
+
     pub fn build(self) -> Result<Config, ConfigBuilderError> {
         let db_path = self.db_path.ok_or(ConfigBuilderError::DbPathRequired)?;
 
@@ -417,6 +426,7 @@ impl ConfigBuilder {
             },
             telemetry,
             log: self.log.unwrap_or_default(),
+            consul: self.consul,
         })
     }
 }
@@ -439,4 +449,10 @@ pub enum LogFormat {
     #[default]
     Plaintext,
     Json,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ConsulConfig {
+    pub client: crate::consul::config::Config,
 }

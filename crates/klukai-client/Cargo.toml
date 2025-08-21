@@ -18,6 +18,8 @@ futures = { workspace = true }
 hickory-resolver = { workspace = true }
 http = { workspace = true }
 hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
 pin-project-lite = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -1,10 +1,10 @@
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
 use antithesis_sdk::assert_sometimes;
-use axum::{Extension, http::StatusCode, response::IntoResponse};
+use axum::Extension;
 use bytes::{BufMut, Bytes, BytesMut};
 use compact_str::ToCompactString;
-use futures::future::poll_fn;
+use http_body_util::StreamBody;
 use klukai_types::{
     agent::Agent,
     api::NotifyEvent,
@@ -16,6 +16,7 @@ use tokio::sync::{
     broadcast::{self, error::RecvError},
     mpsc,
 };
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -32,7 +33,9 @@ pub async fn api_v1_updates(
     Extension(bcast_cache): Extension<SharedUpdateBroadcastCache>,
     Extension(tripwire): Extension<Tripwire>,
     axum::extract::Path(table): axum::extract::Path<String>,
-) -> impl IntoResponse {
+) -> hyper::Response<
+    StreamBody<impl futures::Stream<Item = Result<hyper::body::Frame<Bytes>, std::io::Error>>>,
+> {
     info!("Received update request for table: {table}");
 
     assert_sometimes!(true, "Corrosion receives requests for table updates");
@@ -49,24 +52,60 @@ pub async fn api_v1_updates(
 
     let (handle, maybe_created) = match upsert_res {
         Ok(res) => res,
-        Err(e) => return hyper::Response::<hyper::Body>::from(MatcherUpsertError::from(e)),
-    };
+        Err(e) => {
+            // Create error stream
+            let error_msg = format!("Error: {}", MatcherUpsertError::from(e));
+            let error_json = serde_json::to_vec(&error_msg).expect("could not serialize error");
+            let (error_tx, error_rx) =
+                tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(1);
+            let _ = error_tx
+                .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                .await;
+            let error_stream = ReceiverStream::new(error_rx);
+            let error_body = StreamBody::new(error_stream);
 
-    let (tx, body) = hyper::Body::channel();
-    // let (forward_tx, forward_rx) = mpsc::channel(10240);
+            return hyper::Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(error_body)
+                .expect("could not build error response");
+        }
+    };
 
     let (update_id, sub_rx) =
         match upsert_update(handle.clone(), maybe_created, updates, &mut bcast_write).await {
             Ok(id) => id,
-            Err(e) => return hyper::Response::<hyper::Body>::from(e),
+            Err(e) => {
+                // Create error stream
+                let error_msg = format!("Error: {}", e);
+                let error_json = serde_json::to_vec(&error_msg).expect("could not serialize error");
+                let (error_tx, error_rx) = tokio::sync::mpsc::channel::<
+                    Result<hyper::body::Frame<Bytes>, std::io::Error>,
+                >(1);
+                let _ = error_tx
+                    .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                    .await;
+                let error_stream = ReceiverStream::new(error_rx);
+                let error_body = StreamBody::new(error_stream);
+
+                return hyper::Response::builder()
+                    .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(error_body)
+                    .expect("could not build error response");
+            }
         };
 
+    // Create streaming body
+    let (stream_tx, stream_rx) =
+        tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(10240);
+    let stream = ReceiverStream::new(stream_rx);
+    let body = StreamBody::new(stream);
+
     tokio::spawn(forward_update_bytes_to_body_sender(
-        handle, sub_rx, tx, tripwire,
+        handle, sub_rx, stream_tx, tripwire,
     ));
 
     hyper::Response::builder()
-        .status(StatusCode::OK)
+        .status(hyper::StatusCode::OK)
         .header("corro-query-id", update_id.to_string())
         .body(body)
         .expect("could not generate ok http response for update request")
@@ -184,7 +223,7 @@ fn make_query_event_bytes(
 async fn forward_update_bytes_to_body_sender(
     update: UpdateHandle,
     mut rx: broadcast::Receiver<Bytes>,
-    mut tx: hyper::body::Sender,
+    tx: tokio::sync::mpsc::Sender<Result<hyper::body::Frame<Bytes>, std::io::Error>>,
     mut tripwire: Tripwire,
 ) {
     let mut buf = BytesMut::new();
@@ -200,10 +239,10 @@ async fn forward_update_bytes_to_body_sender(
                     Ok(event_buf) => {
                         buf.extend_from_slice(&event_buf);
                         if buf.len() >= 64 * 1024
-                            && let Err(e) = tx.send_data(buf.split().freeze()).await {
-                                warn!(update_id = %update.id(), "could not forward update query event to receiver: {e}");
+                            && let Err(_) = tx.send(Ok(hyper::body::Frame::data(buf.split().freeze()))).await {
+                                warn!(update_id = %update.id(), "could not forward update query event to receiver: stream closed");
                                 return;
-                            };
+                            }
                     },
                     Err(RecvError::Lagged(skipped)) => {
                         warn!(update_id = %update.id(), "update skipped {} events, aborting", skipped);
@@ -217,15 +256,11 @@ async fn forward_update_bytes_to_body_sender(
             },
             _ = &mut send_deadline => {
                 if !buf.is_empty() {
-                    if let Err(e) = tx.send_data(buf.split().freeze()).await {
-                        warn!(update_id = %update.id(), "could not forward subscription query event to receiver: {e}");
+                    if tx.send(Ok(hyper::body::Frame::data(buf.split().freeze()))).await.is_err() {
+                        warn!(update_id = %update.id(), "could not forward subscription query event to receiver: stream closed");
                         return;
                     }
                 } else {
-                    if let Err(e) = poll_fn(|cx| tx.poll_ready(cx)).await {
-                        warn!(update_id = %update.id(), error = %e, "body sender was closed or errored, stopping event broadcast sends");
-                        return;
-                    }
                     send_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(10));
                     continue;
                 }
@@ -240,10 +275,15 @@ async fn forward_update_bytes_to_body_sender(
         }
     }
 
+    // Send any remaining data
     while let Ok(event_buf) = rx.try_recv() {
         buf.extend_from_slice(&event_buf);
-        if let Err(e) = tx.send_data(buf.split().freeze()).await {
-            warn!(update_id = %update.id(), "could not forward subscription query event to receiver: {e}");
+        if tx
+            .send(Ok(hyper::body::Frame::data(buf.split().freeze())))
+            .await
+            .is_err()
+        {
+            warn!(update_id = %update.id(), "could not forward subscription query event to receiver: stream closed");
             return;
         }
     }

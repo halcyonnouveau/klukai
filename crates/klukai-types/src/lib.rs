@@ -9,6 +9,7 @@ pub mod broadcast;
 pub mod change;
 pub mod channel;
 pub mod config;
+pub mod consul;
 pub mod members;
 pub mod pubsub;
 pub mod schema;

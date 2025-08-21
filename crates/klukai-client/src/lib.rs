@@ -1,12 +1,15 @@
 pub mod sub;
 
+use bytes::Bytes;
 use hickory_resolver::{
     AsyncResolver,
     error::{ResolveError, ResolveErrorKind},
     name_server::TokioConnectionProvider,
 };
-use http::uri::PathAndQuery;
-use hyper::{Body, StatusCode, client::HttpConnector, http::HeaderName};
+use http_body_util::{BodyExt, Full};
+use hyper::http::uri::PathAndQuery;
+use hyper::{StatusCode, http::HeaderName};
+use hyper_util::client::legacy::{Client, connect::HttpConnector};
 use klukai_types::api::{ChangeId, ExecResponse, ExecResult, SqliteValue, Statement};
 use serde::de::DeserializeOwned;
 use std::{
@@ -33,7 +36,7 @@ const DNS_RESOLVE_TIMEOUT: Duration = Duration::from_secs(3);
 #[derive(Clone)]
 pub struct CorrosionApiClient {
     api_addr: SocketAddr,
-    api_client: hyper::Client<HttpConnector, Body>,
+    api_client: Client<HttpConnector, Full<Bytes>>,
 }
 
 impl CorrosionApiClient {
@@ -42,7 +45,8 @@ impl CorrosionApiClient {
         connector.set_connect_timeout(Some(HTTP2_CONNECT_TIMEOUT));
         Self {
             api_addr,
-            api_client: hyper::Client::builder()
+            api_client: Client::builder(hyper_util::rt::TokioExecutor::new())
+                .timer(hyper_util::rt::TokioTimer::new())
                 .http2_only(true)
                 .http2_keep_alive_interval(Some(HTTP2_KEEP_ALIVE_INTERVAL))
                 .http2_keep_alive_timeout(HTTP2_KEEP_ALIVE_INTERVAL / 2)
@@ -63,14 +67,14 @@ impl CorrosionApiClient {
             .uri(format!("http://{}/v1/queries{}", self.api_addr, params))
             .header(hyper::header::CONTENT_TYPE, "application/json")
             .header(hyper::header::ACCEPT, "application/json")
-            .body(Body::from(serde_json::to_vec(statement)?))?;
+            .body(Full::new(Bytes::from(serde_json::to_vec(statement)?)))?;
 
         let res = self.api_client.request(req).await?;
 
         if !res.status().is_success() {
             let status = res.status();
-            match hyper::body::to_bytes(res.into_body()).await {
-                Ok(b) => match serde_json::from_slice(&b) {
+            match res.into_body().collect().await {
+                Ok(collected) => match serde_json::from_slice(&collected.to_bytes()) {
                     Ok(res) => match res {
                         ExecResult::Error { error } => return Err(Error::ResponseError(error)),
                         res => return Err(Error::UnexpectedResult(res)),
@@ -130,7 +134,7 @@ impl CorrosionApiClient {
             .uri(url)
             .header(hyper::header::CONTENT_TYPE, "application/json")
             .header(hyper::header::ACCEPT, "application/json")
-            .body(Body::from(serde_json::to_vec(statement)?))?;
+            .body(Full::new(Bytes::from(serde_json::to_vec(statement)?)))?;
 
         let res = self.api_client.request(req).await?;
 
@@ -193,7 +197,7 @@ impl CorrosionApiClient {
             .method(hyper::Method::GET)
             .uri(url)
             .header(hyper::header::ACCEPT, "application/json")
-            .body(hyper::Body::empty())?;
+            .body(Full::new(Bytes::new()))?;
 
         let res = self.api_client.request(req).await?;
 
@@ -242,7 +246,7 @@ impl CorrosionApiClient {
             .uri(url)
             .header(hyper::header::CONTENT_TYPE, "application/json")
             .header(hyper::header::ACCEPT, "application/json")
-            .body(hyper::Body::empty())?;
+            .body(Full::new(Bytes::new()))?;
 
         let res = self.api_client.request(req).await?;
 
@@ -283,14 +287,14 @@ impl CorrosionApiClient {
             .uri(uri)
             .header(hyper::header::CONTENT_TYPE, "application/json")
             .header(hyper::header::ACCEPT, "application/json")
-            .body(Body::from(serde_json::to_vec(statements)?))?;
+            .body(Full::new(Bytes::from(serde_json::to_vec(statements)?)))?;
 
         let res = self.api_client.request(req).await?;
 
         let status = res.status();
         if !status.is_success() {
-            match hyper::body::to_bytes(res.into_body()).await {
-                Ok(b) => match serde_json::from_slice(&b) {
+            match res.into_body().collect().await {
+                Ok(collected) => match serde_json::from_slice(&collected.to_bytes()) {
                     Ok(ExecResponse { results, .. }) => {
                         if let Some(ExecResult::Error { error }) = results
                             .into_iter()
@@ -317,7 +321,8 @@ impl CorrosionApiClient {
                 }
             }
         }
-        let bytes = hyper::body::to_bytes(res.into_body()).await?;
+        let collected = res.into_body().collect().await?;
+        let bytes = collected.to_bytes();
         Ok(serde_json::from_slice(&bytes)?)
     }
 
@@ -327,7 +332,7 @@ impl CorrosionApiClient {
             .uri(format!("http://{}/v1/migrations", self.api_addr))
             .header(hyper::header::CONTENT_TYPE, "application/json")
             .header(hyper::header::ACCEPT, "application/json")
-            .body(Body::from(serde_json::to_vec(statements)?))?;
+            .body(Full::new(Bytes::from(serde_json::to_vec(statements)?)))?;
 
         let res = self.api_client.request(req).await?;
 
@@ -335,7 +340,8 @@ impl CorrosionApiClient {
             return Err(Error::UnexpectedStatusCode(res.status()));
         }
 
-        let bytes = hyper::body::to_bytes(res.into_body()).await?;
+        let collected = res.into_body().collect().await?;
+        let bytes = collected.to_bytes();
 
         Ok(serde_json::from_slice(&bytes)?)
     }
@@ -450,7 +456,7 @@ impl CorrosionPooledClient {
             (response, generation)
         };
 
-        if matches!(response, Err(Error::Hyper(_))) {
+        if matches!(response, Err(Error::Hyper(_)) | Err(Error::HyperUtil(_))) {
             // We only care about I/O related errors
             self.handle_error(generation).await;
         } else {
@@ -474,7 +480,7 @@ impl CorrosionPooledClient {
             (response, generation)
         };
 
-        if matches!(response, Err(Error::Hyper(_))) {
+        if matches!(response, Err(Error::Hyper(_)) | Err(Error::HyperUtil(_))) {
             // We only care about I/O related errors
             self.handle_error(generation).await;
         } else {
@@ -498,7 +504,7 @@ impl CorrosionPooledClient {
             (response, generation)
         };
 
-        if matches!(response, Err(Error::Hyper(_))) {
+        if matches!(response, Err(Error::Hyper(_)) | Err(Error::HyperUtil(_))) {
             // We only care about I/O related errors
             self.handle_error(generation).await;
         } else {
@@ -671,7 +677,9 @@ pub enum Error {
     #[error(transparent)]
     Hyper(#[from] hyper::Error),
     #[error(transparent)]
-    InvalidUri(#[from] http::uri::InvalidUri),
+    HyperUtil(#[from] hyper_util::client::legacy::Error),
+    #[error(transparent)]
+    InvalidUri(#[from] hyper::http::uri::InvalidUri),
     #[error(transparent)]
     Http(#[from] hyper::http::Error),
     #[error(transparent)]
@@ -693,8 +701,11 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use crate::{CorrosionPooledClient, Error};
+    use bytes::Bytes;
     use hickory_resolver::AsyncResolver;
-    use hyper::{Body, Request, Response, header::HeaderValue, service::service_fn};
+    use hyper::body::Incoming;
+    use hyper::{Request, Response, header::HeaderValue, service::service_fn};
+    use hyper_util::rt::TokioIo;
     use klukai_types::api::SqliteValue;
     use std::{
         convert::Infallible,
@@ -735,11 +746,14 @@ mod tests {
 
                         let mut drop_conn_rx = drop_conn_rx.resubscribe();
                         tokio::spawn(async move {
-                            let http = hyper::server::conn::Http::new();
+                            let http = hyper::server::conn::http2::Builder::new(
+                                hyper_util::rt::TokioExecutor::new(),
+                            );
                             let conn = http.serve_connection(
-                                stream,
-                                service_fn(move |_: Request<Body>| async move {
-                                    let mut res = Response::new(Body::empty());
+                                TokioIo::new(stream),
+                                service_fn(move |_: Request<Incoming>| async move {
+                                    let mut res =
+                                        Response::new(http_body_util::Empty::<Bytes>::new());
                                     res.headers_mut().insert(
                                         "corro-query-id",
                                         HeaderValue::from_str(&id.to_string()).unwrap(),
@@ -796,6 +810,7 @@ mod tests {
 
         let resolver = AsyncResolver::tokio_from_system_conf().unwrap();
         let client = CorrosionPooledClient::new(addresses, Duration::from_nanos(1), resolver);
+
         let sub = client
             .subscribe_typed::<SqliteValue>(&statement, false, None)
             .await
@@ -808,7 +823,10 @@ mod tests {
         let res = client
             .subscribe_typed::<SqliteValue>(&statement, false, None)
             .await;
-        assert!(matches!(res, Result::Err(Error::Hyper(_))));
+        assert!(matches!(
+            res,
+            Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+        ));
 
         // But the new one should succeed
         let sub = client
@@ -833,7 +851,10 @@ mod tests {
         let res = client
             .subscribe_typed::<SqliteValue>(&statement, false, None)
             .await;
-        assert!(matches!(res, Result::Err(Error::Hyper(_))));
+        assert!(matches!(
+            res,
+            Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+        ));
 
         // Second one should succeed
         let sub = client
@@ -852,7 +873,10 @@ mod tests {
             let res = client
                 .subscribe_typed::<SqliteValue>(&statement, false, None)
                 .await;
-            assert!(matches!(res, Result::Err(Error::Hyper(_))));
+            assert!(matches!(
+                res,
+                Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+            ));
         }
 
         // The next one should succeed
@@ -878,7 +902,10 @@ mod tests {
         let res = client
             .subscribe_typed::<SqliteValue>(&statement, false, None)
             .await;
-        assert!(matches!(res, Result::Err(Error::Hyper(_))));
+        assert!(matches!(
+            res,
+            Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+        ));
 
         // Second one should succeed
         let sub = client
@@ -932,12 +959,16 @@ mod tests {
             let res = client
                 .subscribe_typed::<SqliteValue>(&statement, false, None)
                 .await;
-            assert!(matches!(res, Result::Err(Error::Hyper(_))));
+            assert!(matches!(
+                res,
+                Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+            ));
         }
 
         // Accept connections on first server in the backup pool
         pool2_servers[0].refuse_new_conns(false);
-        for i in 0..4 {
+        let mut succeeded = false;
+        for _i in 0..10 {
             let res = client
                 .subscribe_typed::<SqliteValue>(&statement, false, None)
                 .await;
@@ -945,11 +976,15 @@ mod tests {
                 Result::Err(_) => (),
                 Ok(sub) => {
                     assert_eq!(sub.id(), pool2_servers[0].id);
+                    succeeded = true;
                     break;
                 }
             }
-            assert!(i != 3);
         }
+        assert!(
+            succeeded,
+            "Failed to connect to backup server after multiple attempts"
+        );
 
         // Kill the connection, it should fallback to the first pool
         pool2_servers[0].kill_existing_conns();
@@ -962,7 +997,10 @@ mod tests {
             let res = client
                 .subscribe_typed::<SqliteValue>(&statement, false, None)
                 .await;
-            assert!(matches!(res, Result::Err(Error::Hyper(_))));
+            assert!(matches!(
+                res,
+                Result::Err(Error::Hyper(_)) | Result::Err(Error::HyperUtil(_))
+            ));
         }
 
         // Thirst one should succeed

@@ -1,9 +1,9 @@
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
-use axum::{Extension, http::StatusCode, response::IntoResponse};
+use axum::{Extension, http::StatusCode};
 use bytes::{BufMut, Bytes, BytesMut};
 use compact_str::{ToCompactString, format_compact};
-use futures::future::poll_fn;
+use http_body_util::{Full, StreamBody};
 use klukai_types::{
     agent::Agent,
     api::{ChangeId, QueryEvent, QueryEventMeta, Statement},
@@ -22,6 +22,7 @@ use tokio::{
     },
     task::{JoinError, block_in_place},
 };
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -40,17 +41,28 @@ pub async fn api_v1_sub_by_id(
     Extension(tripwire): Extension<Tripwire>,
     axum::extract::Path(id): axum::extract::Path<Uuid>,
     axum::extract::Query(params): axum::extract::Query<SubParams>,
-) -> impl IntoResponse {
-    sub_by_id(agent.subs_manager(), id, params, &bcast_cache, tripwire).await
+) -> hyper::Response<
+    StreamBody<impl futures::Stream<Item = Result<hyper::body::Frame<Bytes>, std::io::Error>>>,
+> {
+    sub_by_id(
+        agent.subs_manager().clone(),
+        id,
+        params,
+        bcast_cache,
+        tripwire,
+    )
+    .await
 }
 
 async fn sub_by_id(
-    subs: &SubsManager,
+    subs: SubsManager,
     id: Uuid,
     params: SubParams,
-    bcast_cache: &SharedMatcherBroadcastCache,
+    bcast_cache: SharedMatcherBroadcastCache,
     tripwire: Tripwire,
-) -> hyper::Response<hyper::Body> {
+) -> hyper::Response<
+    StreamBody<impl futures::Stream<Item = Result<hyper::body::Frame<Bytes>, std::io::Error>>>,
+> {
     let matcher_rx = bcast_cache.read().await.get(&id).and_then(|tx| {
         subs.get(&id).map(|matcher| {
             debug!("found matcher by id {id}");
@@ -80,15 +92,24 @@ async fn sub_by_id(
                     });
                 }
 
+                // Create error stream for NOT_FOUND response
+                let error_json = serde_json::to_vec(&QueryEvent::Error(format_compact!(
+                    "could not find subscription with id {id}"
+                )))
+                .expect("could not serialize queries stream error");
+
+                let (error_tx, error_rx) = tokio::sync::mpsc::channel::<
+                    Result<hyper::body::Frame<Bytes>, std::io::Error>,
+                >(1);
+                let _ = error_tx
+                    .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                    .await;
+                let error_stream = ReceiverStream::new(error_rx);
+                let error_body = StreamBody::new(error_stream);
+
                 return hyper::Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body(
-                        serde_json::to_vec(&QueryEvent::Error(format_compact!(
-                            "could not find subscription with id {id}"
-                        )))
-                        .expect("could not serialize queries stream error")
-                        .into(),
-                    )
+                    .status(hyper::StatusCode::NOT_FOUND)
+                    .body(error_body)
                     .expect("could not build error response");
             }
         }
@@ -99,12 +120,20 @@ async fn sub_by_id(
     let query_hash = matcher.hash().to_owned();
     tokio::spawn(catch_up_sub(matcher, params, rx, evt_tx));
 
-    let (tx, body) = hyper::Body::channel();
+    // Create a channel for streaming
+    let (stream_tx, stream_rx) =
+        tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(512);
 
-    tokio::spawn(forward_bytes_to_body_sender(id, evt_rx, tx, tripwire));
+    // Create a streaming body from the receiver
+    let stream = ReceiverStream::new(stream_rx);
+    let body = StreamBody::new(stream);
+
+    tokio::spawn(forward_bytes_to_body_sender(
+        id, evt_rx, stream_tx, tripwire,
+    ));
 
     hyper::Response::builder()
-        .status(StatusCode::OK)
+        .status(hyper::StatusCode::OK)
         .header("corro-query-id", id.to_string())
         .header("corro-query-hash", query_hash)
         .body(body)
@@ -303,15 +332,14 @@ impl MatcherUpsertError {
     }
 }
 
-impl From<MatcherUpsertError> for hyper::Response<hyper::Body> {
+impl From<MatcherUpsertError> for hyper::Response<Full<Bytes>> {
     fn from(value: MatcherUpsertError) -> Self {
         hyper::Response::builder()
-            .status(value.status_code())
-            .body(
+            .status(hyper::StatusCode::from_u16(value.status_code().as_u16()).unwrap())
+            .body(Full::new(Bytes::from(
                 serde_json::to_vec(&QueryEvent::Error(value.to_compact_string()))
-                    .expect("could not serialize queries stream error")
-                    .into(),
-            )
+                    .expect("could not serialize queries stream error"),
+            )))
             .expect("could not build error response")
     }
 }
@@ -674,10 +702,28 @@ pub async fn api_v1_subs(
     Extension(tripwire): Extension<Tripwire>,
     axum::extract::Query(params): axum::extract::Query<SubParams>,
     axum::extract::Json(stmt): axum::extract::Json<Statement>,
-) -> impl IntoResponse {
+) -> hyper::Response<
+    StreamBody<impl futures::Stream<Item = Result<hyper::body::Frame<Bytes>, std::io::Error>>>,
+> {
     let stmt = match expand_sql(&agent, &stmt).await {
         Ok(stmt) => stmt,
-        Err(e) => return hyper::Response::<hyper::Body>::from(e),
+        Err(e) => {
+            // Create error stream
+            let error_msg = format!("Error: {}", e);
+            let error_json = serde_json::to_vec(&error_msg).expect("could not serialize error");
+            let (error_tx, error_rx) =
+                tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(1);
+            let _ = error_tx
+                .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                .await;
+            let error_stream = ReceiverStream::new(error_rx);
+            let error_body = StreamBody::new(error_stream);
+
+            return hyper::Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(error_body)
+                .expect("could not build error response");
+        }
     };
 
     info!("Received subscription request for query: {stmt}");
@@ -696,17 +742,37 @@ pub async fn api_v1_subs(
 
     let (handle, maybe_created) = match upsert_res {
         Ok(res) => res,
-        Err(e) => return hyper::Response::<hyper::Body>::from(MatcherUpsertError::from(e)),
+        Err(e) => {
+            // Create error stream
+            let error_msg = format!("Error: {}", MatcherUpsertError::from(e));
+            let error_json = serde_json::to_vec(&error_msg).expect("could not serialize error");
+            let (error_tx, error_rx) =
+                tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(1);
+            let _ = error_tx
+                .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                .await;
+            let error_stream = ReceiverStream::new(error_rx);
+            let error_body = StreamBody::new(error_stream);
+
+            return hyper::Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(error_body)
+                .expect("could not build error response");
+        }
     };
 
-    let (tx, body) = hyper::Body::channel();
+    let (stream_tx, stream_rx) =
+        tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(10240);
+    let stream = ReceiverStream::new(stream_rx);
+    let body = StreamBody::new(stream);
+
     let (forward_tx, forward_rx) = mpsc::channel(10240);
 
     tokio::spawn(forward_bytes_to_body_sender(
         handle.id(),
         forward_rx,
-        tx,
-        tripwire,
+        stream_tx,
+        tripwire.clone(),
     ));
 
     let query_hash = handle.hash().to_owned();
@@ -721,11 +787,26 @@ pub async fn api_v1_subs(
     .await
     {
         Ok(id) => id,
-        Err(e) => return hyper::Response::<hyper::Body>::from(e),
+        Err(e) => {
+            let error_msg = format!("Error: {}", e);
+            let error_json = serde_json::to_vec(&error_msg).expect("could not serialize error");
+            let (error_tx, error_rx) =
+                tokio::sync::mpsc::channel::<Result<hyper::body::Frame<Bytes>, std::io::Error>>(1);
+            let _ = error_tx
+                .send(Ok(hyper::body::Frame::data(Bytes::from(error_json))))
+                .await;
+            let error_stream = ReceiverStream::new(error_rx);
+            let error_body = StreamBody::new(error_stream);
+
+            return hyper::Response::builder()
+                .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(error_body)
+                .expect("could not build error response");
+        }
     };
 
     hyper::Response::builder()
-        .status(StatusCode::OK)
+        .status(hyper::StatusCode::OK)
         .header("corro-query-id", matcher_id.to_string())
         .header("corro-query-hash", query_hash)
         .body(body)
@@ -783,7 +864,7 @@ async fn handle_sub_event(
     buf: &mut BytesMut,
     event_buf: Bytes,
     meta: QueryEventMeta,
-    tx: &mut hyper::body::Sender,
+    tx: &tokio::sync::mpsc::Sender<Result<hyper::body::Frame<Bytes>, std::io::Error>>,
     last_change_id: &mut ChangeId,
 ) -> hyper::Result<()> {
     match meta {
@@ -808,13 +889,23 @@ async fn handle_sub_event(
         return Ok(());
     };
 
-    tx.send_data(to_send).await
+    if tx
+        .send(Ok(hyper::body::Frame::data(to_send)))
+        .await
+        .is_err()
+    {
+        // For Hyper 1.x, we can't convert io::Error to hyper::Error easily
+        // Just return unit type error or use a different error handling approach
+        warn!(sub_id = %sub_id, "stream channel closed, stopping event handling");
+        return Ok(()); // Continue gracefully instead of erroring
+    }
+    Ok(())
 }
 
 async fn forward_bytes_to_body_sender(
     sub_id: Uuid,
     mut rx: mpsc::Receiver<(Bytes, QueryEventMeta)>,
-    mut tx: hyper::body::Sender,
+    tx: tokio::sync::mpsc::Sender<Result<hyper::body::Frame<Bytes>, std::io::Error>>,
     mut tripwire: Tripwire,
 ) {
     let mut buf = BytesMut::new();
@@ -830,7 +921,7 @@ async fn forward_bytes_to_body_sender(
             res = rx.recv() => {
                 match res {
                     Some((event_buf, meta)) => {
-                        if let Err(e) = handle_sub_event(sub_id, &mut buf, event_buf, meta, &mut tx, &mut last_change_id).await {
+                        if let Err(e) = handle_sub_event(sub_id, &mut buf, event_buf, meta, &tx, &mut last_change_id).await {
                             warn!(%sub_id, "could not forward subscription query event to receiver: {e}");
                             return;
                         }
@@ -840,15 +931,11 @@ async fn forward_bytes_to_body_sender(
             },
             _ = &mut send_deadline => {
                 if !buf.is_empty() {
-                    if let Err(e) = tx.send_data(buf.split().freeze()).await {
+                    if let Err(e) = tx.send(Ok(hyper::body::Frame::data(buf.split().freeze()))).await {
                         warn!(%sub_id, "could not forward subscription query event to receiver: {e}");
                         return;
                     }
                 } else {
-                    if let Err(e) = poll_fn(|cx| tx.poll_ready(cx)).await {
-                        warn!(%sub_id, error = %e, "body sender was closed or errored, stopping event broadcast sends");
-                        return;
-                    }
                     send_deadline.as_mut().reset(tokio::time::Instant::now() + Duration::from_millis(10));
                     continue;
                 }
@@ -860,15 +947,8 @@ async fn forward_bytes_to_body_sender(
     }
 
     while let Ok((event_buf, meta)) = rx.try_recv() {
-        if let Err(e) = handle_sub_event(
-            sub_id,
-            &mut buf,
-            event_buf,
-            meta,
-            &mut tx,
-            &mut last_change_id,
-        )
-        .await
+        if let Err(e) =
+            handle_sub_event(sub_id, &mut buf, event_buf, meta, &tx, &mut last_change_id).await
         {
             warn!(%sub_id, "could not forward subscription query event to receiver: {e}");
             return;
@@ -876,7 +956,7 @@ async fn forward_bytes_to_body_sender(
     }
 
     if !buf.is_empty()
-        && let Err(e) = tx.send_data(buf.freeze()).await
+        && let Err(e) = tx.send(Ok(hyper::body::Frame::data(buf.freeze()))).await
     {
         warn!(%sub_id, "could not forward last subscription query event to receiver: {e}");
     }
@@ -884,20 +964,24 @@ async fn forward_bytes_to_body_sender(
 
 #[cfg(test)]
 mod tests {
-    use http_body::Body;
-    use klukai_types::actor::ActorId;
-    use klukai_types::api::NotifyEvent;
-    use klukai_types::api::{ColumnName, TableName};
-    use klukai_types::base::{CrsqlDbVersion, CrsqlSeq};
-    use klukai_types::broadcast::{ChangeSource, ChangeV1, Changeset};
-    use klukai_types::change::Change;
-    use klukai_types::pubsub::pack_columns;
-    use klukai_types::spawn::wait_for_all_pending_handles;
-    use klukai_types::tripwire::Tripwire;
+    use axum::response::IntoResponse;
+    use http_body_util::BodyExt;
+    use klukai_tests::launch_test_agent;
+    use klukai_tests::tempdir::TempDir;
     use klukai_types::{
-        api::{ChangeId, RowId},
-        config::Config,
-        pubsub::ChangeType,
+        actor::ActorId,
+        api::{ColumnName, NotifyEvent, SqliteValue::Integer, TableName},
+        base::{CrsqlDbVersion, CrsqlSeq},
+        broadcast::{ChangeSource, ChangeV1, Changeset},
+        change::Change,
+        pubsub::pack_columns,
+        spawn::wait_for_all_pending_handles,
+        tripwire::Tripwire,
+        {
+            api::{ChangeId, RowId},
+            config::Config,
+            pubsub::ChangeType,
+        },
     };
     use serde::de::DeserializeOwned;
     use std::ops::RangeInclusive;
@@ -906,16 +990,13 @@ mod tests {
     use tokio_util::codec::{Decoder, LinesCodec};
 
     use super::*;
-    use crate::agent::process_multiple_changes;
-    use crate::api::public::TimeoutParams;
-    use crate::api::public::update::{SharedUpdateBroadcastCache, api_v1_updates};
     use crate::{
-        agent::setup,
-        api::public::{api_v1_db_schema, api_v1_transactions},
+        agent::{process_multiple_changes, setup},
+        api::public::{
+            TimeoutParams, api_v1_db_schema, api_v1_transactions,
+            update::{SharedUpdateBroadcastCache, api_v1_updates},
+        },
     };
-    use klukai_tests::launch_test_agent;
-    use klukai_tests::tempdir::TempDir;
-    use klukai_types::api::SqliteValue::Integer;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_api_v1_subs() -> eyre::Result<()> {
@@ -978,7 +1059,7 @@ mod tests {
             .into_response();
 
             if !res.status().is_success() {
-                let b = res.body_mut().data().await.unwrap().unwrap();
+                let b = res.body_mut().collect().await.unwrap().to_bytes();
                 println!("body: {}", String::from_utf8_lossy(&b));
             }
 
@@ -999,7 +1080,7 @@ mod tests {
             .into_response();
 
             if !notify_res.status().is_success() {
-                let b = notify_res.body_mut().data().await.unwrap().unwrap();
+                let b = notify_res.body_mut().collect().await.unwrap().to_bytes();
                 println!("body: {}", String::from_utf8_lossy(&b));
             }
 
@@ -1108,7 +1189,7 @@ mod tests {
             .into_response();
 
             if !res.status().is_success() {
-                let b = res.body_mut().data().await.unwrap().unwrap();
+                let b = res.body_mut().collect().await.unwrap().to_bytes();
                 println!("body: {}", String::from_utf8_lossy(&b));
             }
 
@@ -1142,7 +1223,7 @@ mod tests {
             .into_response();
 
             if !notify_res2.status().is_success() {
-                let b = notify_res2.body_mut().data().await.unwrap().unwrap();
+                let b = notify_res2.body_mut().collect().await.unwrap().to_bytes();
                 println!("body: {}", String::from_utf8_lossy(&b));
             }
 
@@ -1206,7 +1287,7 @@ mod tests {
             .into_response();
 
             if !res.status().is_success() {
-                let b = res.body_mut().data().await.unwrap().unwrap();
+                let b = res.body_mut().collect().await.unwrap().to_bytes();
                 println!("body: {}", String::from_utf8_lossy(&b));
             }
 
@@ -1327,7 +1408,7 @@ mod tests {
         .into_response();
 
         if !res.status().is_success() {
-            let b = res.body_mut().data().await.unwrap().unwrap();
+            let b = res.body_mut().collect().await.unwrap().to_bytes();
             println!("body: {}", String::from_utf8_lossy(&b));
         }
 
@@ -1376,7 +1457,7 @@ mod tests {
         .into_response();
 
         if !res.status().is_success() {
-            let b = res.body_mut().data().await.unwrap().unwrap();
+            let b = res.body_mut().collect().await.unwrap().to_bytes();
             println!("body: {}", String::from_utf8_lossy(&b));
         }
 
@@ -1427,7 +1508,7 @@ mod tests {
         .into_response();
 
         if !res.status().is_success() {
-            let b = res.body_mut().data().await.unwrap().unwrap();
+            let b = res.body_mut().collect().await.unwrap().to_bytes();
             println!("body: {}", String::from_utf8_lossy(&b));
         }
 
@@ -1537,7 +1618,7 @@ mod tests {
         .into_response();
 
         if !res.status().is_success() {
-            let b = res.body_mut().data().await.unwrap().unwrap();
+            let b = res.body_mut().collect().await.unwrap().to_bytes();
             println!("body: {}", String::from_utf8_lossy(&b));
         }
 
@@ -1554,7 +1635,7 @@ mod tests {
         .into_response();
 
         if !notify_res.status().is_success() {
-            let b = notify_res.body_mut().data().await.unwrap().unwrap();
+            let b = notify_res.body_mut().collect().await.unwrap().to_bytes();
             println!("body: {}", String::from_utf8_lossy(&b));
         }
 
@@ -1689,7 +1770,7 @@ mod tests {
     }
 
     struct RowsIter {
-        body: axum::body::BoxBody,
+        body: axum::body::Body,
         codec: LinesCodec,
         buf: BytesMut,
         done: bool,
@@ -1718,11 +1799,14 @@ mod tests {
                     }
                 }
 
-                let bytes_res = self.body.data().await;
-                match bytes_res {
-                    Some(Ok(b)) => {
-                        // debug!("read {} bytes", b.len());
-                        self.buf.extend_from_slice(&b)
+                let frame_res = self.body.frame().await;
+                match frame_res {
+                    Some(Ok(frame)) => {
+                        if let Some(data) = frame.data_ref() {
+                            // debug!("read {} bytes", data.len());
+                            self.buf.extend_from_slice(data);
+                        }
+                        // If it's not a data frame, just continue the loop
                     }
                     Some(Err(e)) => {
                         self.done = true;

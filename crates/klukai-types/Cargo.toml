@@ -23,6 +23,10 @@ foca = { workspace = true }
 futures = { workspace = true }
 futures-util = { workspace = true }
 hex = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-rustls = { workspace = true }
+hyper-util = { workspace = true }
 indexmap = { workspace = true }
 itertools = { workspace = true }
 nix = { workspace = true }
@@ -35,6 +39,9 @@ rand = { workspace = true }
 rangemap = { workspace = true }
 rcgen = { workspace = true }
 rusqlite = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+rustls-pki-types = { workspace = true }
 seahash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -53,6 +60,7 @@ uhlc = { workspace = true }
 uuid = { workspace = true }
 strum = { workspace = true }
 antithesis_sdk = { workspace = true }
+webpki = { workspace = true }
 
 [features]
 default = ["rt_tokio_1"]

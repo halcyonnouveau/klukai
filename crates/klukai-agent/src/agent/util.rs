@@ -6,7 +6,7 @@
 //! be pulled out of this file in future.
 
 use crate::{
-    agent::{CountedExecutor, TO_CLEAR_COUNT, handlers},
+    agent::{TO_CLEAR_COUNT, handlers},
     api::public::{
         api_v1_db_schema, api_v1_queries, api_v1_table_stats, api_v1_transactions,
         pubsub::{api_v1_sub_by_id, api_v1_subs},
@@ -33,15 +33,16 @@ use super::BcastCache;
 use crate::api::public::update::api_v1_updates;
 use antithesis_sdk::{assert_always, assert_unreachable};
 use axum::{
-    BoxError, Extension, Router, TypedHeader,
+    BoxError, Extension, Router,
     error_handling::HandleErrorLayer,
-    extract::DefaultBodyLimit,
-    headers::{Authorization, authorization::Bearer},
+    extract::{DefaultBodyLimit, Request},
     routing::{get, post},
 };
+use axum_extra::TypedHeader;
 use foca::Member;
-use futures::FutureExt;
-use hyper::{StatusCode, server::conn::AddrIncoming};
+use headers::{Authorization, authorization::Bearer};
+use hyper::StatusCode;
+// Server setup for Hyper 1.x using tokio::net::TcpListener
 use klukai_types::{
     broadcast::Timestamp,
     spawn::spawn_counted,
@@ -185,7 +186,7 @@ pub async fn setup_http_api_handler(
     subs_manager: &SubsManager,
     api_listeners: Vec<TcpListener>,
 ) -> eyre::Result<Vec<JoinHandle<()>>> {
-    let api = Router::new()
+    let api = Router::<()>::new()
         // transactions
         .route(
             "/v1/transactions",
@@ -231,7 +232,7 @@ pub async fn setup_http_api_handler(
             ),
         )
         .route(
-            "/v1/updates/:table",
+            "/v1/updates/{table}",
             post(api_v1_updates).route_layer(
                 tower::ServiceBuilder::new()
                     .layer(HandleErrorLayer::new(|_error: BoxError| async {
@@ -245,7 +246,7 @@ pub async fn setup_http_api_handler(
             ),
         )
         .route(
-            "/v1/subscriptions/:id",
+            "/v1/subscriptions/{id}",
             get(api_v1_sub_by_id).route_layer(
                 tower::ServiceBuilder::new()
                     .layer(HandleErrorLayer::new(|_error: BoxError| async {
@@ -300,37 +301,37 @@ pub async fn setup_http_api_handler(
         .layer(TraceLayer::new_for_http());
 
     let mut handles: Vec<JoinHandle<()>> = vec![];
+
     for api_listener in api_listeners {
         let api_addr = api_listener.local_addr()?;
         info!("Starting API listener on tcp/{api_addr}");
-        let mut incoming = AddrIncoming::from_listener(api_listener)?;
-        incoming.set_nodelay(true);
 
-        let fut = axum::Server::builder(incoming)
-            .executor(CountedExecutor)
-            .serve(
-                api.clone()
-                    .into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .with_graceful_shutdown(
-                tripwire
-                    .clone()
-                    .inspect(move |_| info!("corrosion api http tripped {api_addr}")),
-            )
-            .inspect(|_| info!("corrosion api is done"));
+        let app = api
+            .clone()
+            .into_make_service_with_connect_info::<SocketAddr>();
+        let tripwire_clone = tripwire.clone();
+
+        let fut = axum::serve(api_listener, app).with_graceful_shutdown(async move {
+            tripwire_clone.await;
+            info!("corrosion api http tripped {api_addr}");
+        });
+
         handles.push(spawn_counted(async move {
-            let _ = fut.await;
+            if let Err(e) = fut.await {
+                error!("API server error: {e}");
+            }
+            info!("corrosion api is done");
         }));
     }
 
     Ok(handles)
 }
 
-async fn require_authz<B>(
+async fn require_authz(
     Extension(agent): Extension<Agent>,
     maybe_authz_header: Option<TypedHeader<Authorization<Bearer>>>,
-    request: axum::http::Request<B>,
-    next: axum::middleware::Next<B>,
+    request: Request,
+    next: axum::middleware::Next,
 ) -> Result<axum::response::Response, axum::http::StatusCode> {
     let passed = if let Some(ref authz) = agent.config().api.authorization {
         match authz {
