@@ -52,3 +52,4 @@ strum = { workspace = true }
 antithesis_sdk = { workspace = true }
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
+corro-tests = { path = "../corro-tests" }

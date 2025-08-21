@@ -128,9 +128,9 @@ fn make_query_event_bytes(
     Ok((buf.split().freeze(), query_evt.meta()))
 }
 
-const MAX_UNSUB_TIME: Duration = Duration::from_secs(120);
+const MAX_UNSUB_TIME: Duration = Duration::from_secs(10 * 60);
 // this should be a fraction of the MAX_UNSUB_TIME
-const RECEIVERS_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+const RECEIVERS_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 
 pub async fn process_sub_channel(
     subs: SubsManager,

@@ -888,6 +888,7 @@ dependencies = [
  "config",
  "corro-api-types",
  "corro-speedy",
+ "corro-tests",
  "deadpool",
  "enquote",
  "fallible-iterator",

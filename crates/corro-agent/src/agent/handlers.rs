@@ -651,7 +651,7 @@ pub async fn handle_changes(
 
                 if seen.len() > max_seen_cache_len {
                     // we don't want to keep too many entries in here.
-                    seen = seen.split_off(seen.len() - keep_seen_cache_size);
+                    seen.drain(..seen.len() - keep_seen_cache_size);
                 }
                 continue
             },
@@ -686,22 +686,19 @@ pub async fn handle_changes(
         }
 
         let src_str: &'static str = src.into();
-        let recv_lag = change
-            .ts()
-            .map(|ts| {
-                let mut our_ts = Timestamp::from(agent.clock().new_timestamp());
-                if ts > our_ts {
-                    if let Err(e) = agent.update_clock_with_timestamp(change.actor_id, ts) {
-                        error!("could not update clock from actor {}: {e}", change.actor_id);
-                        return None;
-                    }
-                    counter!("corro.agent.clock.update", "source" => src_str).increment(1);
-                    // update our_ts to the new timestamp
-                    our_ts = Timestamp::from(agent.clock().new_timestamp());
+        let recv_lag = change.ts().and_then(|ts| {
+            let mut our_ts = Timestamp::from(agent.clock().new_timestamp());
+            if ts > our_ts {
+                if let Err(e) = agent.update_clock_with_timestamp(change.actor_id, ts) {
+                    error!("could not update clock from actor {}: {e}", change.actor_id);
+                    return None;
                 }
-                Some((our_ts.0 - ts.0).to_duration())
-            })
-            .flatten();
+                counter!("corro.agent.clock.update", "source" => src_str).increment(1);
+                // update our_ts to the new timestamp
+                our_ts = Timestamp::from(agent.clock().new_timestamp());
+            }
+            Some((our_ts.0 - ts.0).to_duration())
+        });
 
         if matches!(src, ChangeSource::Broadcast) {
             counter!("corro.broadcast.recv.count", "kind" => "change").increment(1);
