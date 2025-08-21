@@ -706,7 +706,7 @@ pub async fn api_v1_table_stats(
 
 #[cfg(test)]
 mod tests {
-    use corro_types::corro_types::tripwire::Tripwire;
+    use corro_types::tripwire::Tripwire;
     use corro_types::{
         api::RowId,
         base::CrsqlDbVersion,

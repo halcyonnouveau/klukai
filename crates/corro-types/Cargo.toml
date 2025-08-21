@@ -56,5 +56,6 @@ default = ["rt_tokio_1"]
 rt_tokio_1 = ["deadpool/rt_tokio_1"]
 
 [dev-dependencies]
+assert2 = { workspace = true }
 tracing-subscriber = { workspace = true }
 corro-tests = { path = "../corro-tests" }

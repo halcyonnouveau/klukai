@@ -1682,7 +1682,7 @@ mod tests {
     use corro_tests::TEST_SCHEMA;
     use corro_types::api::Statement;
     use corro_types::base::CrsqlDbVersion;
-    use corro_types::corro_types::tripwire::Tripwire;
+    use corro_types::tripwire::Tripwire;
     use corro_types::{
         api::{ColumnName, TableName},
         config::{Config, TlsConfig, DEFAULT_GOSSIP_CLIENT_ADDR},
