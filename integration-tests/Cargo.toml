@@ -1,12 +1,13 @@
 [package]
 name = "integration-tests"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+publish = false
 
 [dependencies]
 assert_cmd = "2.0.12"
-klukai-tests = { path = "../crates/klukai-tests" }
-klukai-types = { path = "../crates/klukai-types" }
+klukai-types.workspace = true
+klukai-tests.workspace = true
 escargot = "0.5.8"
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }

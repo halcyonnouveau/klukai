@@ -1,16 +1,19 @@
 [package]
 name = "klukai-types"
-version = "0.1.0-alpha.1"
-edition = "2024"
-description = "common types for klukai corrosion"
-license = "Apache-2.0"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Core types and utilities for Klukai Corrosion"
 
 [dependencies]
 arc-swap = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 camino = { workspace = true }
-circular-buffer = "0.1.5"
+circular-buffer = { workspace = true }
 compact_str = { workspace = true }
 config = { workspace = true }
 deadpool = { workspace = true }
@@ -22,7 +25,7 @@ futures-util = { workspace = true }
 hex = { workspace = true }
 indexmap = { workspace = true }
 itertools = { workspace = true }
-nix = { version = "*", features = ["fs"] }
+nix = { workspace = true }
 metrics = { workspace = true }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true }
@@ -58,4 +61,4 @@ rt_tokio_1 = ["deadpool/rt_tokio_1"]
 [dev-dependencies]
 assert2 = { workspace = true }
 tracing-subscriber = { workspace = true }
-klukai-tests = { path = "../klukai-tests" }
+klukai-tests.workspace = true

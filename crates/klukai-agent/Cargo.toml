@@ -1,10 +1,15 @@
 [package]
 name = "klukai-agent"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Agent component for Klukai Corrosion"
 
 [dependencies]
-klukai-types = { path = "../klukai-types" }
+klukai-types.workspace = true
 
 antithesis_sdk = { workspace = true }
 arc-swap = { workspace = true }
@@ -56,5 +61,5 @@ indexmap = { workspace = true }
 governor.workspace = true
 
 [dev-dependencies]
-klukai-tests = { path = "../klukai-tests" }
+klukai-tests.workspace = true
 http-body = { workspace = true }

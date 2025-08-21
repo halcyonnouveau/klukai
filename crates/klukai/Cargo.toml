@@ -1,8 +1,12 @@
 [package]
 name = "klukai"
-version = "0.2.0-beta.0"
-edition = "2024"
-license = "Apache-2.0"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Gossip-based service discovery (and more) for large distributed systems."
 
 [[bin]]
 name = "corrosion"
@@ -16,10 +20,10 @@ camino = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
 config = { workspace = true }
-csv = { version = "1.2.2" }
-klukai-agent = { path = "../klukai-agent" }
-klukai-client = { path = "../klukai-client" }
-klukai-types = { path = "../klukai-types" }
+csv = { workspace = true }
+klukai-agent.workspace = true
+klukai-client.workspace = true
+klukai-types.workspace = true
 crc32fast = { workspace = true }
 enquote = { workspace = true }
 eyre = { workspace = true }
@@ -30,25 +34,23 @@ hyper = { workspace = true }
 indexmap = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
-notify = { version = "6.0.1", default-features = false, features = [
-    "macos_kqueue",
-] }
-notify-debouncer-mini = { version = "0.3.0", default-features = false }
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true }
 rangemap = { workspace = true }
 rhai = { workspace = true }
-rhai-tpl = { version = "0.1.2" }
+rhai-tpl = { workspace = true }
 rusqlite = { workspace = true }
 seahash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-shellwords = { version = "1" }
+shellwords = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-tikv-jemallocator = "0.5"
+tikv-jemallocator = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true }
 tokio-metrics = { workspace = true }
@@ -59,11 +61,11 @@ tracing-filter = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
-shell-words = "1.1.0"
+shell-words = { workspace = true }
 metrics-util = { workspace = true }
 
 [build-dependencies]
 build-info-build = { workspace = true }
 
 [dev-dependencies]
-klukai-tests = { path = "../klukai-tests" }
+klukai-tests.workspace = true
