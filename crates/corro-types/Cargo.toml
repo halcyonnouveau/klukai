@@ -13,7 +13,6 @@ camino = { workspace = true }
 circular-buffer = "0.1.5"
 compact_str = { workspace = true }
 config = { workspace = true }
-corro-api-types = { version = "0.1.0-alpha.1", path = "../corro-api-types" }
 deadpool = { workspace = true }
 enquote = { workspace = true }
 fallible-iterator = { workspace = true }
@@ -34,6 +33,7 @@ seahash = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
+smallvec = { workspace = true }
 spawn = { path = "../spawn" }
 speedy = { workspace = true }
 sqlite-pool = { path = "../sqlite-pool" }

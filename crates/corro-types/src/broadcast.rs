@@ -8,7 +8,7 @@ use std::{
 
 use antithesis_sdk::assert_sometimes;
 use bytes::{Bytes, BytesMut};
-use corro_api_types::{ColumnName, SqliteValue};
+use crate::api::{ColumnName, SqliteValue};
 use foca::{Identity, Member, Notification, Runtime, Timer};
 use itertools::Itertools;
 use metrics::counter;

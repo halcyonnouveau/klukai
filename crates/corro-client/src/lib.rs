@@ -1,6 +1,6 @@
 pub mod sub;
 
-use corro_api_types::{ChangeId, ExecResponse, ExecResult, SqliteValue, Statement};
+use corro_types::api::{ChangeId, ExecResponse, ExecResult, SqliteValue, Statement};
 use hickory_resolver::{
     error::{ResolveError, ResolveErrorKind},
     name_server::TokioConnectionProvider,
@@ -690,7 +690,7 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use crate::{CorrosionPooledClient, Error};
-    use corro_api_types::SqliteValue;
+    use corro_types::api::SqliteValue;
     use hickory_resolver::AsyncResolver;
     use hyper::{header::HeaderValue, service::service_fn, Body, Request, Response};
     use std::{

@@ -6,7 +6,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use corro_api_types::SqliteValue;
+use crate::api::SqliteValue;
 use foca::Identity;
 use rusqlite::{
     types::{FromSql, ToSqlOutput},

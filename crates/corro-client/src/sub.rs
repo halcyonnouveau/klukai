@@ -8,7 +8,7 @@ use std::{
 };
 
 use bytes::{Buf, Bytes, BytesMut};
-use corro_api_types::{ChangeId, QueryEvent, TypedNotifyEvent, TypedQueryEvent};
+use corro_types::api::{ChangeId, QueryEvent, TypedNotifyEvent, TypedQueryEvent};
 use futures::{ready, Future, Stream};
 use hyper::{client::HttpConnector, Body};
 use pin_project_lite::pin_project;

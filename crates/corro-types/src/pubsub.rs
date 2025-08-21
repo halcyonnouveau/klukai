@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use bytes::{Buf, BufMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{format_compact, ToCompactString};
-use corro_api_types::{
+use crate::api::{
     ChangeId, ColumnName, ColumnType, RowId, SqliteValue, SqliteValueRef, TableName,
 };
 use enquote::unquote;
@@ -52,7 +52,7 @@ use crate::{
 };
 
 use crate::updates::{Handle, Manager};
-pub use corro_api_types::sqlite::ChangeType;
+pub use crate::api::sqlite::ChangeType;
 
 #[derive(Debug, Default, Clone)]
 pub struct SubsManager(Arc<RwLock<InnerSubsManager>>);

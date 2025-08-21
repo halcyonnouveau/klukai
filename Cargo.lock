@@ -741,30 +741,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "corro-api-types"
-version = "0.1.0-alpha.1"
-dependencies = [
- "async-trait",
- "camino",
- "compact_str 0.7.1",
- "corro-speedy",
- "deadpool",
- "hex",
- "rusqlite",
- "serde",
- "serde_json",
- "smallvec",
- "strum",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
 name = "corro-client"
 version = "0.1.0-alpha.1"
 dependencies = [
  "bytes",
- "corro-api-types",
+ "corro-types",
  "eyre",
  "futures",
  "hickory-resolver",
@@ -831,7 +812,6 @@ dependencies = [
  "circular-buffer",
  "compact_str 0.7.1",
  "config",
- "corro-api-types",
  "corro-speedy",
  "corro-tests",
  "deadpool",
@@ -854,6 +834,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with",
+ "smallvec",
  "spawn",
  "sqlite-pool",
  "sqlite3-parser",
@@ -883,7 +864,6 @@ dependencies = [
  "compact_str 0.7.1",
  "config",
  "corro-agent",
- "corro-api-types",
  "corro-client",
  "corro-tests",
  "corro-types",

@@ -12,11 +12,10 @@ use command::{
     tls::{generate_ca, generate_client_cert, generate_server_cert},
     tpl::TemplateFlags,
 };
-use corro_api_types::SqliteParam;
 use corro_client::CorrosionApiClient;
 use corro_types::{
     actor::{ActorId, ClusterId},
-    api::{ExecResult, QueryEvent, Statement},
+    api::{ExecResult, QueryEvent, Statement, SqliteParam},
     base::CrsqlDbVersion,
     config::{default_admin_path, Config, ConfigError, LogFormat, OtelConfig},
 };

@@ -8,8 +8,8 @@ use crate::pubsub::{unpack_columns, MatchCandidates, MatchableChange, MatcherErr
 use crate::schema::Schema;
 use antithesis_sdk::assert_sometimes;
 use async_trait::async_trait;
-use corro_api_types::sqlite::ChangeType;
-use corro_api_types::{ColumnName, NotifyEvent, SqliteValueRef, TableName};
+use crate::api::sqlite::ChangeType;
+use crate::api::{ColumnName, NotifyEvent, SqliteValueRef, TableName};
 use indexmap::{map::Entry, IndexMap};
 use metrics::{counter, histogram, Counter};
 use parking_lot::RwLock;

@@ -1,8 +1,8 @@
 use std::{iter::Peekable, ops::RangeInclusive};
 
 use antithesis_sdk::assert_always;
-pub use corro_api_types::SqliteValue;
-use corro_api_types::{ColumnName, TableName};
+pub use crate::api::SqliteValue;
+use crate::api::{ColumnName, TableName};
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
