@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    ".antithesis/client/rust-load-generator",
     "crates/*",
     "integration-tests",
 ]

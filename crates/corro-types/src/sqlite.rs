@@ -4,7 +4,11 @@ use std::{
 };
 
 use once_cell::sync::Lazy;
-use rusqlite::{params, trace::TraceEventCodes, Connection, Transaction};
+use rusqlite::{
+    functions::FunctionFlags, params, trace::TraceEventCodes, Connection, Error, Result,
+    Transaction,
+};
+use serde_json::Value;
 use sqlite_pool::{Committable, SqliteConn};
 use tempfile::TempDir;
 use tracing::{error, info, trace, warn};
@@ -46,7 +50,7 @@ pub fn rusqlite_to_crsqlite_write(conn: rusqlite::Connection) -> rusqlite::Resul
 pub fn rusqlite_to_crsqlite(mut conn: rusqlite::Connection) -> rusqlite::Result<CrConn> {
     init_cr_conn(&mut conn)?;
     setup_conn(&conn)?;
-    sqlite_functions::add_to_connection(&conn)?;
+    add_to_connection(&conn)?;
 
     const SLOW_THRESHOLD: Duration = Duration::from_secs(1);
     conn.trace_v2(
@@ -217,9 +221,59 @@ pub fn migrate(conn: &mut Connection, migrations: Vec<Box<dyn Migration>>) -> ru
     Ok(())
 }
 
+/// Add custom Corrosion functions into SQLite connection.
+fn add_to_connection(db: &Connection) -> Result<()> {
+    add_corro_json_contains(db)?;
+
+    Ok(())
+}
+
+// corro_json_contains returns true if the first argument of the function
+// (JSON object) is fully contained within the second argument of the
+// function (also JSON object)
+fn add_corro_json_contains(db: &Connection) -> Result<()> {
+    db.create_scalar_function(
+        "corro_json_contains",
+        2,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        move |ctx| {
+            assert_eq!(ctx.len(), 2, "called with unexpected number of arguments");
+
+            let selector: Value = serde_json::from_str(ctx.get_raw(0).as_str()?)
+                .map_err(|e| Error::UserFunctionError(e.into()))?;
+            let object: Value = serde_json::from_str(ctx.get_raw(1).as_str()?)
+                .map_err(|e| Error::UserFunctionError(e.into()))?;
+
+            Ok(corro_json_contains(selector, object))
+        },
+    )
+}
+
+// Helper function that returns true if the first JSON object is full
+// contained within the second JSON object.
+fn corro_json_contains(selector: Value, object: Value) -> bool {
+    match (selector, object) {
+        (Value::Object(s_map), Value::Object(mut o_map)) => {
+            for (s_k, s_v) in s_map {
+                if let Some(o_v) = o_map.remove(&s_k) {
+                    if !corro_json_contains(s_v, o_v) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            true
+        }
+        (s, o) => s == o,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use futures::{stream::FuturesUnordered, TryStreamExt};
+    use rusqlite::{Connection, Result};
     use sqlite_pool::Config;
     use sqlite_pool::InterruptibleTransaction;
     use tokio::task::block_in_place;
@@ -317,6 +371,77 @@ mod tests {
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM testsbool;", (), |row| row.get(0))?;
         assert_eq!(count, 0);
         Ok(())
+    }
+
+    fn get_conn() -> Connection {
+        let conn = Connection::open_in_memory().expect("cannot open in-memory connection");
+        super::add_corro_json_contains(&conn)
+            .expect("cannot add corrosion functions to connection");
+
+        conn
+    }
+
+    fn query_corro_json_contains(conn: &Connection, obj1: &str, obj2: &str) -> Result<bool> {
+        conn.query_row("SELECT corro_json_contains(?1, ?2)", [obj1, obj2], |row| {
+            row.get(0)
+        })
+    }
+
+    #[test]
+    fn test_corro_json_contains() {
+        let conn = get_conn();
+
+        // Empty object is contained in other empty objects
+        assert_eq!(Ok(true), query_corro_json_contains(&conn, "{}", "{}"));
+        // Empty object is contained in non-empty objects
+        assert_eq!(
+            Ok(true),
+            query_corro_json_contains(&conn, "{}", r#"{"key": "value"}"#)
+        );
+        // An object with keys is not contained in an empty object
+        assert_ne!(
+            Ok(true),
+            query_corro_json_contains(&conn, r#"{"key": "value"}"#, "{}")
+        );
+
+        // Equal key/values match
+        assert_eq!(
+            Ok(true),
+            query_corro_json_contains(&conn, r#"{"key": "value"}"#, r#"{"key": "value"}"#)
+        );
+        // Smaller objects is also Ok
+        assert_eq!(
+            Ok(true),
+            query_corro_json_contains(
+                &conn,
+                r#"{"key": "value"}"#,
+                r#"{"key": "value", "key2": "value2"}"#
+            )
+        );
+        // Not equal key/values do not match
+        assert_ne!(
+            Ok(true),
+            query_corro_json_contains(&conn, r#"{"key": "value"}"#, r#"{"key": "wrong value"}"#)
+        );
+
+        // Nested objects work
+        assert_eq!(
+            Ok(true),
+            query_corro_json_contains(
+                &conn,
+                r#"{"metadata": { "key": "value"} }"#,
+                r#"{"metadata": { "key": "value"} }"#
+            )
+        );
+        // And do not match with different key/values
+        assert_ne!(
+            Ok(true),
+            query_corro_json_contains(
+                &conn,
+                r#"{"metadata": { "key": "value"} }"#,
+                r#"{"metadata": { "key": "wrong value"} }"#
+            )
+        );
     }
 
     #[derive(Debug, thiserror::Error)]

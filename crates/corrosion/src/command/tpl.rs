@@ -5,10 +5,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::tpl::{Dynamic, TemplateCommand, TemplateState};
 use camino::Utf8PathBuf;
 use clap::Args;
 use corro_client::CorrosionApiClient;
-use corro_tpl::{Dynamic, TemplateCommand, TemplateState};
 use futures::{stream::FuturesUnordered, StreamExt};
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebounceEventResult, Debouncer};
@@ -89,7 +89,7 @@ pub async fn run(
         futs.push(async move {
             let mut checksum = crc32fast::hash(input.as_bytes());
 
-            let mut engine = corro_tpl::Engine::new::<std::fs::File>(client.clone());
+            let mut engine = crate::tpl::Engine::new::<std::fs::File>(client.clone());
 
             let mut tpl = engine.compile_mut(&input)?;
             let tmp_filepath = dir.path().join(Uuid::new_v4().as_simple().to_string());

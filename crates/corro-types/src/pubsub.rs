@@ -1601,7 +1601,7 @@ impl Matcher {
                     while let Ok(Some(row)) = rows.next() {
                         let rowid: RowId = row.get(0)?;
 
-                        let change_type = change_type.clone().take().unwrap_or({
+                        let change_type = change_type.clone().unwrap_or({
                             if rowid.0 > self.last_rowid {
                                 ChangeType::Insert
                             } else {

@@ -36,7 +36,6 @@ serde_json = { workspace = true }
 serde_with = { workspace = true }
 spawn = { path = "../spawn" }
 speedy = { workspace = true }
-sqlite-functions = { path = "../sqlite-functions" }
 sqlite-pool = { path = "../sqlite-pool" }
 sqlite3-parser = { workspace = true }
 tempfile = { workspace = true }
@@ -50,6 +49,7 @@ uhlc = { workspace = true }
 uuid = { workspace = true }
 strum = { workspace = true }
 antithesis_sdk = { workspace = true }
+
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
 corro-tests = { path = "../corro-tests" }

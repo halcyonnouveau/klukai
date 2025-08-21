@@ -820,34 +820,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "corro-tpl"
-version = "0.1.0"
-dependencies = [
- "compact_str 0.7.1",
- "corro-client",
- "corro-tests",
- "corro-types",
- "csv",
- "enquote",
- "futures",
- "hex",
- "hostname",
- "indexmap 2.10.0",
- "rhai",
- "rhai-tpl",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "tripwire",
- "uuid",
-]
-
-[[package]]
 name = "corro-types"
 version = "0.1.0-alpha.1"
 dependencies = [
@@ -883,7 +855,6 @@ dependencies = [
  "serde_json",
  "serde_with",
  "spawn",
- "sqlite-functions",
  "sqlite-pool",
  "sqlite3-parser",
  "strum",
@@ -909,18 +880,22 @@ dependencies = [
  "bytes",
  "camino",
  "clap",
+ "compact_str 0.7.1",
  "config",
  "corro-agent",
  "corro-api-types",
  "corro-client",
  "corro-tests",
- "corro-tpl",
  "corro-types",
  "crc32fast",
+ "csv",
+ "enquote",
  "eyre",
  "futures",
+ "hex",
  "hostname",
  "hyper",
+ "indexmap 2.10.0",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-util",
@@ -932,6 +907,8 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-semantic-conventions",
  "rangemap",
+ "rhai",
+ "rhai-tpl",
  "rusqlite",
  "seahash",
  "serde",
@@ -3385,24 +3362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-load-generator"
-version = "0.1.0"
-dependencies = [
- "antithesis_sdk",
- "clap",
- "corro-api-types",
- "corro-client",
- "eyre",
- "futures",
- "hickory-resolver",
- "serde",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tripwire",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3878,14 +3837,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d96d2d1d716fb500937168cc09353ffdc7a012be8475ac7308e1bdf0e3923300"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "sqlite-functions"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "serde_json",
 ]
 
 [[package]]

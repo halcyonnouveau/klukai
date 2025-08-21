@@ -43,6 +43,7 @@ use uuid::Uuid;
 pub mod admin;
 pub mod command;
 pub mod sqlite3_restore;
+pub mod tpl;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
