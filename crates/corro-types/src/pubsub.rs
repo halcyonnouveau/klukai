@@ -2377,6 +2377,8 @@ pub fn unpack_columns(mut buf: &[u8]) -> Result<Vec<SqliteValueRef<'_>>, UnpackE
 
 #[cfg(test)]
 mod tests {
+    use std::net::Ipv4Addr;
+
     use camino::Utf8PathBuf;
     use rusqlite::params;
     use spawn::wait_for_all_pending_handles;
@@ -2457,9 +2459,44 @@ mod tests {
               'instance',       cs.instance_id
             )
           )
-            ";
+          FROM consul_services cs
+            LEFT JOIN machines m                   ON m.id = cs.instance_id
+            LEFT JOIN machine_versions mv          ON m.id = mv.machine_id  AND m.machine_version_id = mv.id
+            LEFT JOIN machine_version_statuses mvs ON m.id = mvs.machine_id AND m.machine_version_id = mvs.id
+          WHERE cs.node = 'test-hostname'
+            AND (mvs.status IS NULL OR mvs.status = 'started')
+            AND cs.name == 'app-prometheus'";
 
         let schema_sql = "
+          CREATE TABLE consul_services (
+              node TEXT NOT NULL,
+              id TEXT NOT NULL,
+              name TEXT NOT NULL DEFAULT '',
+              tags TEXT NOT NULL DEFAULT '[]',
+              meta TEXT NOT NULL DEFAULT '{}',
+              port INTEGER NOT NULL DEFAULT 0,
+              address TEXT NOT NULL DEFAULT '',
+              updated_at INTEGER NOT NULL DEFAULT 0,
+              app_id INTEGER AS (CAST(JSON_EXTRACT(meta, '$.app_id') AS INTEGER)), network_id INTEGER AS (
+                  CAST(JSON_EXTRACT(meta, '$.network_id') AS INTEGER)
+              ), app_name TEXT AS (JSON_EXTRACT(meta, '$.app_name')), instance_id TEXT AS (
+                  COALESCE(
+                      JSON_EXTRACT(meta, '$.machine_id'),
+                      SUBSTR(JSON_EXTRACT(meta, '$.alloc_id'), 1, 8),
+                      CASE
+                          WHEN INSTR(id, '_nomad-task-') = 1 THEN SUBSTR(id, 13, 8)
+                          ELSE NULL
+                      END
+                  )
+              ), organization_id INTEGER AS (
+                  CAST(
+                      JSON_EXTRACT(meta, '$.organization_id') AS INTEGER
+                  )
+              ), protocol TEXT
+          AS (JSON_EXTRACT(meta, '$.protocol')),
+              PRIMARY KEY (node, id)
+          );
+
           CREATE TABLE machines (
               id TEXT NOT NULL PRIMARY KEY,
               node TEXT NOT NULL DEFAULT '',
@@ -2513,11 +2550,15 @@ mod tests {
         {
             let tx = conn.transaction().unwrap();
             tx.execute_batch(r#"
+                INSERT INTO consul_services (node, id, name, address, port, meta) VALUES ('test-hostname', 'service-1', 'app-prometheus', '127.0.0.1', 1, '{"path": "/1", "machine_id": "m-1"}');
+
                 INSERT INTO machines (id, machine_version_id) VALUES ('m-1', 'mv-1');
 
                 INSERT INTO machine_versions (machine_id, id) VALUES ('m-1', 'mv-1');
 
                 INSERT INTO machine_version_statuses (machine_id, id, status) VALUES ('m-1', 'mv-1', 'started');
+
+                INSERT INTO consul_services (node, id, name, address, port, meta) VALUES ('test-hostname', 'service-2', 'not-app-prometheus', '127.0.0.1', 1, '{"path": "/1", "machine_id": "m-2"}');
 
                 INSERT INTO machines (id, machine_version_id) VALUES ('m-2', 'mv-2');
 
@@ -2626,6 +2667,8 @@ mod tests {
             {
                 let tx = conn.transaction().unwrap();
                 tx.execute_batch(r#"
+                INSERT INTO consul_services (node, id, name, address, port, meta) VALUES ('test-hostname', 'service-3', 'app-prometheus', '127.0.0.1', 1, '{"path": "/1", "machine_id": "m-3"}');
+
                 INSERT INTO machines (id, machine_version_id) VALUES ('m-3', 'mv-3');
 
                 INSERT INTO machine_versions (machine_id, id) VALUES ('m-3', 'mv-3');
@@ -2648,6 +2691,15 @@ mod tests {
 
             println!("received change");
 
+            // delete the first row
+            {
+                let tx = conn.transaction().unwrap();
+                tx.execute_batch(r#"
+                        DELETE FROM consul_services where node = 'test-hostname' AND id = 'service-1';
+                    "#).unwrap();
+                tx.commit().unwrap();
+            }
+
             filter_changes_from_db(&matcher, &conn, None, CrsqlDbVersion(3)).unwrap();
 
             let cells = vec![SqliteValue::Text("{\"targets\":[\"127.0.0.1:1\"],\"labels\":{\"__metrics_path__\":\"/1\",\"app\":null,\"vm_account_id\":null,\"instance\":\"m-1\"}}".into())];
@@ -2660,6 +2712,16 @@ mod tests {
             );
 
             println!("got change (A)");
+
+            // update the second row
+            {
+                let tx = conn.transaction().unwrap();
+                let n = tx.execute(r#"
+                        UPDATE consul_services SET address = '127.0.0.2' WHERE node = 'test-hostname' AND id = 'service-3';
+                    "#, ()).unwrap();
+                assert_eq!(n, 1);
+                tx.commit().unwrap();
+            }
 
             filter_changes_from_db(&matcher, &conn, None, CrsqlDbVersion(4)).unwrap();
 
@@ -2687,8 +2749,16 @@ mod tests {
                 let tx = conn.transaction().unwrap();
 
                 for n in range.clone() {
+                    let svc_id = format!("service-{n}");
+                    let ip = Ipv4Addr::from(n).to_string();
+                    let port = n;
                     let machine_id = format!("m-{n}");
                     let mv = format!("mv-{n}");
+                    let meta =
+                        serde_json::json!({"path": format!("/path-{n}"), "machine_id": machine_id});
+                    tx.execute("
+                                    INSERT INTO consul_services (node, id, name, address, port, meta) VALUES ('test-hostname', ?, 'app-prometheus', ?, ?, ?);
+                                    ", params![svc_id, ip, port, meta]).unwrap();
                     tx.execute(
                         "
                         INSERT INTO machines (id, machine_version_id) VALUES (?, ?);
