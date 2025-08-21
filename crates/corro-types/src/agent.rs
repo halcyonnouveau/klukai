@@ -1922,7 +1922,7 @@ mod tests {
 
         assert_eq!(
             bv.max,
-            all_versions.iter().last().map(|range| *range.end()),
+            all_versions.iter().next_back().map(|range| *range.end()),
             "expected last version not to increment"
         );
 

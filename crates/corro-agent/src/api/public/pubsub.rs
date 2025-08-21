@@ -271,6 +271,7 @@ async fn expand_sql(agent: &Agent, stmt: &Statement) -> Result<String, MatcherUp
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum MatcherUpsertError {
     #[error(transparent)]
     Pool(#[from] SqlitePoolError),

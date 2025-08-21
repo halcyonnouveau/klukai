@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use crate::actor::ActorId;
 use crate::agent::SplitPool;
 use crate::base::CrsqlDbVersion;

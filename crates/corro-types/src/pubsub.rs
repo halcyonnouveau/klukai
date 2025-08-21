@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use std::{
     cmp,
     collections::{BTreeMap, HashMap, HashSet},
@@ -1601,7 +1603,7 @@ impl Matcher {
                     while let Ok(Some(row)) = rows.next() {
                         let rowid: RowId = row.get(0)?;
 
-                        let change_type = change_type.clone().unwrap_or({
+                        let change_type = change_type.unwrap_or({
                             if rowid.0 > self.last_rowid {
                                 ChangeType::Insert
                             } else {
@@ -2189,6 +2191,7 @@ impl MatcherError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum NormalizeStatementError {
     #[error(transparent)]
     Parse(#[from] sqlite3_parser::lexer::sql::Error),

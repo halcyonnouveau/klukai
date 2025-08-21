@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use std::{
     collections::{HashMap, HashSet},
     fmt,
@@ -189,6 +191,7 @@ pub enum SchemaError {
 }
 
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)]
 pub enum ConstrainedSchemaError {
     #[error("unique indexes are not supported: {0}")]
     UniqueIndex(String),
