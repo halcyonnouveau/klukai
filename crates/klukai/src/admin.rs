@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::net::UnixStream;
-use tokio_serde::{formats::Json, Framed};
+use tokio_serde::{Framed, formats::Json};
 use tokio_util::codec::LengthDelimitedCodec;
 use tracing::{error, event};
 
@@ -23,7 +23,7 @@ use klukai_types::{
     tripwire::Tripwire,
     updates::Handle,
 };
-use rusqlite::{named_params, params, OptionalExtension};
+use rusqlite::{OptionalExtension, named_params, params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::OffsetDateTime;
@@ -33,8 +33,8 @@ use tokio::{
     task::block_in_place,
 };
 use tracing::{debug, info, warn};
-use tracing_filter::{legacy::Filter, FilterLayer};
-use tracing_subscriber::{reload::Handle as ReloadHandle, Registry};
+use tracing_filter::{FilterLayer, legacy::Filter};
+use tracing_subscriber::{Registry, reload::Handle as ReloadHandle};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

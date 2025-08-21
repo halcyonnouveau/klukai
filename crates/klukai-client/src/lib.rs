@@ -1,13 +1,13 @@
 pub mod sub;
 
-use klukai_types::api::{ChangeId, ExecResponse, ExecResult, SqliteValue, Statement};
 use hickory_resolver::{
+    AsyncResolver,
     error::{ResolveError, ResolveErrorKind},
     name_server::TokioConnectionProvider,
-    AsyncResolver,
 };
 use http::uri::PathAndQuery;
-use hyper::{client::HttpConnector, http::HeaderName, Body, StatusCode};
+use hyper::{Body, StatusCode, client::HttpConnector, http::HeaderName};
+use klukai_types::api::{ChangeId, ExecResponse, ExecResult, SqliteValue, Statement};
 use serde::de::DeserializeOwned;
 use std::{
     net::SocketAddr,
@@ -693,15 +693,15 @@ pub enum Error {
 #[cfg(test)]
 mod tests {
     use crate::{CorrosionPooledClient, Error};
-    use klukai_types::api::SqliteValue;
     use hickory_resolver::AsyncResolver;
-    use hyper::{header::HeaderValue, service::service_fn, Body, Request, Response};
+    use hyper::{Body, Request, Response, header::HeaderValue, service::service_fn};
+    use klukai_types::api::SqliteValue;
     use std::{
         convert::Infallible,
         net::SocketAddr,
         sync::{
-            atomic::{AtomicBool, Ordering},
             Arc,
+            atomic::{AtomicBool, Ordering},
         },
         time::Duration,
     };

@@ -13,8 +13,8 @@ use foca::{Identity, Member, Notification, Runtime, Timer};
 use itertools::Itertools;
 use metrics::counter;
 use rusqlite::{
-    types::{FromSql, FromSqlError},
     ToSql,
+    types::{FromSql, FromSqlError},
 };
 use serde::{Deserialize, Serialize};
 use speedy::{Context, Readable, Reader, Writable, Writer};
@@ -30,7 +30,7 @@ use crate::{
     actor::{Actor, ActorId, ClusterId},
     agent::Agent,
     base::{CrsqlDbVersion, CrsqlSeq},
-    change::{row_to_change, Change, ChunkedChanges, MAX_CHANGES_BYTE_SIZE},
+    change::{Change, ChunkedChanges, MAX_CHANGES_BYTE_SIZE, row_to_change},
     channel::CorroSender,
     sqlite::SqlitePoolError,
     sync::SyncTraceContextV1,
@@ -308,7 +308,7 @@ impl Timestamp {
     }
 
     pub fn is_zero(&self) -> bool {
-        self.0 .0 == 0
+        self.0.0 == 0
     }
 }
 
@@ -402,12 +402,12 @@ where
 {
     #[inline]
     fn write_to<T: ?Sized + Writer<C>>(&self, writer: &mut T) -> Result<(), C::Error> {
-        self.0 .0.write_to(writer)
+        self.0.0.write_to(writer)
     }
 
     #[inline]
     fn bytes_needed(&self) -> Result<usize, C::Error> {
-        <u64 as speedy::Writable<C>>::bytes_needed(&self.0 .0)
+        <u64 as speedy::Writable<C>>::bytes_needed(&self.0.0)
     }
 }
 
@@ -567,7 +567,9 @@ pub async fn broadcast_changes(
                     });
                 }
                 Err(e) => {
-                    error!("could not process crsql change (db_version: {db_version}) for broadcast: {e}");
+                    error!(
+                        "could not process crsql change (db_version: {db_version}) for broadcast: {e}"
+                    );
                     break;
                 }
             }

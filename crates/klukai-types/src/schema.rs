@@ -197,7 +197,9 @@ pub enum ConstrainedSchemaError {
     UniqueIndex(String),
     #[error("table as select arenot supported: {0}")]
     TableAsSelect(Cmd),
-    #[error("not nullable column '{name}' on table '{tbl_name}' needs a default value for forward schema compatibility")]
+    #[error(
+        "not nullable column '{name}' on table '{tbl_name}' needs a default value for forward schema compatibility"
+    )]
     NotNullableColumnNeedsDefault { tbl_name: String, name: String },
     #[error("foreign keys are not supported (table: '{tbl_name}', column: '{name}')")]
     ForeignKey { tbl_name: String, name: String },
@@ -255,17 +257,23 @@ pub enum ApplySchemaError {
     #[error("can't modify primary keys (table: '{0}')")]
     ModifyPrimaryKeys(String),
 
-    #[error("tried importing an existing schema for table '{0}' due to a failed CREATE TABLE but didn't find anything (this should never happen)")]
+    #[error(
+        "tried importing an existing schema for table '{0}' due to a failed CREATE TABLE but didn't find anything (this should never happen)"
+    )]
     ImportedSchemaNotFound(String),
 
-    #[error("existing schema for table '{tbl_name}' primary keys mismatched, expected: {expected:?}, got: {got:?}")]
+    #[error(
+        "existing schema for table '{tbl_name}' primary keys mismatched, expected: {expected:?}, got: {got:?}"
+    )]
     ImportedSchemaPkMismatch {
         tbl_name: String,
         expected: IndexSet<String>,
         got: IndexSet<String>,
     },
 
-    #[error("existing schema for table '{tbl_name}' columns mismatched, expected: {expected:?}, got: {got:?}")]
+    #[error(
+        "existing schema for table '{tbl_name}' columns mismatched, expected: {expected:?}, got: {got:?}"
+    )]
     ImportedSchemaColumnsMismatch {
         tbl_name: String,
         expected: IndexMap<String, Column>,
@@ -323,7 +331,9 @@ pub fn apply_schema(
             );
 
             if let Err(e) = create_table_res {
-                debug!("could not create table '{name}', trying to reconcile schema if table already exists");
+                debug!(
+                    "could not create table '{name}', trying to reconcile schema if table already exists"
+                );
                 let sql: Vec<String> = tx
                 .prepare(
                     "SELECT sql FROM sqlite_schema WHERE tbl_name = ? AND type IN ('table', 'index') AND name IS NOT NULL AND sql IS NOT NULL")?.query_map(

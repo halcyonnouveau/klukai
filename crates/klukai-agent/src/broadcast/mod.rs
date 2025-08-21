@@ -1,12 +1,12 @@
 use std::{
     cmp,
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque, hash_map::Entry},
     net::SocketAddr,
     num::NonZeroU32,
     pin::Pin,
     sync::{
-        atomic::{AtomicU32, Ordering},
         Arc,
+        atomic::{AtomicU32, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -15,19 +15,19 @@ use bincode::DefaultOptions;
 use bytes::{BufMut, Bytes, BytesMut};
 use foca::{BincodeCodec, Foca, Identity, NoCustomBroadcast, Notification, Timer};
 use futures::{
-    stream::{FusedStream, FuturesUnordered},
     Future,
+    stream::{FusedStream, FuturesUnordered},
 };
 use governor::{Quota, RateLimiter};
 use metrics::{counter, gauge};
 use parking_lot::RwLock;
-use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
+use rand::{SeedableRng, rngs::StdRng, seq::IteratorRandom};
 use rusqlite::params;
 use speedy::Writable;
 use strum::EnumDiscriminants;
 use tokio::{
     sync::mpsc,
-    task::{block_in_place, JoinSet, LocalSet},
+    task::{JoinSet, LocalSet, block_in_place},
     time::interval,
 };
 use tokio_stream::StreamExt;
@@ -38,7 +38,7 @@ use klukai_types::{
     actor::{Actor, ActorId},
     agent::Agent,
     broadcast::{BroadcastInput, DispatchRuntime, FocaCmd, FocaInput, UniPayload, UniPayloadV1},
-    channel::{bounded, CorroReceiver, CorroSender},
+    channel::{CorroReceiver, CorroSender, bounded},
     spawn::spawn_counted,
     tripwire::Tripwire,
 };

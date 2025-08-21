@@ -1,6 +1,6 @@
 use std::{iter, time};
 
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 
 /// Exponential backoff.
 #[derive(Debug, Clone)]

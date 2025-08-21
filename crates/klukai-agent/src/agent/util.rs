@@ -6,7 +6,7 @@
 //! be pulled out of this file in future.
 
 use crate::{
-    agent::{handlers, CountedExecutor, TO_CLEAR_COUNT},
+    agent::{CountedExecutor, TO_CLEAR_COUNT, handlers},
     api::public::{
         api_v1_db_schema, api_v1_queries, api_v1_table_stats, api_v1_transactions,
         pubsub::{api_v1_sub_by_id, api_v1_subs},
@@ -33,24 +33,24 @@ use super::BcastCache;
 use crate::api::public::update::api_v1_updates;
 use antithesis_sdk::{assert_always, assert_unreachable};
 use axum::{
+    BoxError, Extension, Router, TypedHeader,
     error_handling::HandleErrorLayer,
     extract::DefaultBodyLimit,
-    headers::{authorization::Bearer, Authorization},
+    headers::{Authorization, authorization::Bearer},
     routing::{get, post},
-    BoxError, Extension, Router, TypedHeader,
 };
+use foca::Member;
+use futures::FutureExt;
+use hyper::{StatusCode, server::conn::AddrIncoming};
 use klukai_types::{
     broadcast::Timestamp,
     spawn::spawn_counted,
     sqlite_pool::{Committable, InterruptibleTransaction},
     tripwire::{PreemptibleFutureExt, Tripwire},
 };
-use foca::Member;
-use futures::FutureExt;
-use hyper::{server::conn::AddrIncoming, StatusCode};
 use metrics::{counter, histogram};
 use rangemap::{RangeInclusiveMap, RangeInclusiveSet};
-use rusqlite::{named_params, params, Connection};
+use rusqlite::{Connection, named_params, params};
 use serde_json::json;
 use std::{
     cmp,
@@ -59,12 +59,12 @@ use std::{
     net::SocketAddr,
     ops::{Deref, RangeInclusive},
     path::Path,
-    sync::{atomic::AtomicI64, Arc},
+    sync::{Arc, atomic::AtomicI64},
     time::{Duration, Instant},
 };
 use tokio::{
     net::TcpListener,
-    task::{block_in_place, JoinHandle},
+    task::{JoinHandle, block_in_place},
 };
 use tower::{limit::ConcurrencyLimitLayer, load_shed::LoadShedLayer};
 use tower_http::trace::TraceLayer;
@@ -104,7 +104,9 @@ pub async fn initialise_foca(agent: &Agent) {
             .send(FocaInput::ApplyMany(foca_states.into_values().collect()))
             .await
         {
-            error!("Failed to queue initial foca state: {e:?}, cluster membership states will be broken!");
+            error!(
+                "Failed to queue initial foca state: {e:?}, cluster membership states will be broken!"
+            );
         }
 
         let agent = agent.clone();
@@ -523,9 +525,9 @@ pub fn process_single_version<T: Deref<Target = rusqlite::Connection> + Committa
             && let Err(e) = agent
                 .tx_clear_buf()
                 .try_send((actor_id, changeset.versions()))
-            {
-                error!("could not schedule buffered meta clear: {e}");
-            }
+        {
+            error!("could not schedule buffered meta clear: {e}");
+        }
         changes_per_table = table;
 
         (known, changeset)
@@ -833,10 +835,11 @@ pub async fn process_multiple_changes(
                     KnownDbVersion::Cleared
                 } else {
                     if let Some(seqs) = change.seqs()
-                        && seqs.end() < seqs.start() {
-                            warn!(%actor_id, versions = ?change.versions(), "received an invalid change, seqs start is greater than seqs end: {seqs:?}");
-                            continue;
-                        }
+                        && seqs.end() < seqs.start()
+                    {
+                        warn!(%actor_id, versions = ?change.versions(), "received an invalid change, seqs start is greater than seqs end: {seqs:?}");
+                        continue;
+                    }
 
                     let (known, changeset) = {
                         match process_single_version(&agent, &mut tx, change) {
@@ -855,7 +858,9 @@ pub async fn process_multiple_changes(
                                 }
                                 // the transaction was rolled back, so we need to return.
                                 if tx.is_autocommit() {
-                                    error!("error processing single version: {e} and transaction was rolled back");
+                                    error!(
+                                        "error processing single version: {e} and transaction was rolled back"
+                                    );
                                     return Err(ChangeError::Rusqlite {
                                         source: e,
                                         actor_id: None,
@@ -1005,7 +1010,9 @@ pub async fn process_multiple_changes(
                         let tx_apply = agent.tx_apply().clone();
                         tokio::spawn(async move {
                             if let Err(e) = tx_apply.send((actor_id, version)).await {
-                                error!("could not send trigger for applying fully buffered changes later: {e}");
+                                error!(
+                                    "could not send trigger for applying fully buffered changes later: {e}"
+                                );
                             }
                         });
                     } else {
@@ -1220,7 +1227,10 @@ pub fn process_complete_version<T: Deref<Target = rusqlite::Connection> + Commit
         "number of changes is greater than the seq num",
         &details
     );
-    debug_assert!(len <= (seqs.end().0 - seqs.start().0 + 1) as usize, "change from actor {actor_id} version {version} has len {len} but seqs range is {seqs:?} and last_seq is {last_seq}");
+    debug_assert!(
+        len <= (seqs.end().0 - seqs.start().0 + 1) as usize,
+        "change from actor {actor_id} version {version} has len {len} but seqs range is {seqs:?} and last_seq is {last_seq}"
+    );
 
     let mut impactful_changeset = vec![];
 
@@ -1351,11 +1361,7 @@ pub async fn read_files_from_paths<P: AsRef<Path>>(
                                 .into_iter()
                                 .filter_map(|entry| {
                                     entry.path().extension().and_then(|ext| {
-                                        if ext == "sql" {
-                                            Some(entry)
-                                        } else {
-                                            None
-                                        }
+                                        if ext == "sql" { Some(entry) } else { None }
                                     })
                                 })
                                 .collect();

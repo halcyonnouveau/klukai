@@ -1,8 +1,8 @@
 use nom::{
+    IResult,
     bytes::complete::tag,
     character::complete::{alpha1, multispace0},
     sequence::delimited,
-    IResult,
 };
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -155,9 +155,10 @@ where
                     }
 
                     if let TypedQueryEvent::Change(_, _, _, change_id) = &evt
-                        && let Err(e) = self.handle_change(*change_id) {
-                            return Poll::Ready(Some(Err(e)));
-                        }
+                        && let Err(e) = self.handle_change(*change_id)
+                    {
+                        return Poll::Ready(Some(Err(e)));
+                    }
 
                     Poll::Ready(Some(Ok(evt)))
                 }
@@ -169,9 +170,10 @@ where
                         }
 
                         if let TypedQueryEvent::Change(_, _, _, change_id) = &evt
-                            && let Err(e) = self.handle_change(*change_id) {
-                                return Poll::Ready(Some(Err(e)));
-                            }
+                            && let Err(e) = self.handle_change(*change_id)
+                        {
+                            return Poll::Ready(Some(Err(e)));
+                        }
                     }
 
                     // But return the original error anyway (unless this is out-of-order event)

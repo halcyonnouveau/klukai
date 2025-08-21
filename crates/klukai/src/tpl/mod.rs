@@ -8,12 +8,12 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 
 use compact_str::ToCompactString;
-use klukai_client::sub::SubscriptionStream;
-use klukai_client::CorrosionApiClient;
-use klukai_types::api::{ColumnName, QueryEvent, RowId, SqliteParam, Statement};
-use klukai_types::change::SqliteValue;
 use futures::StreamExt;
 use indexmap::IndexMap;
+use klukai_client::CorrosionApiClient;
+use klukai_client::sub::SubscriptionStream;
+use klukai_types::api::{ColumnName, QueryEvent, RowId, SqliteParam, Statement};
+use klukai_types::change::SqliteValue;
 pub use rhai::Dynamic;
 use rhai::NativeCallContext;
 use rhai::{EvalAltResult, Map};
@@ -22,7 +22,7 @@ use rhai_tpl::Writer;
 use serde::ser::{SerializeSeq, Serializer};
 use serde_json::ser::Formatter;
 use tokio::sync::OnceCell;
-use tokio::sync::{mpsc, RwLock as TokioRwLock};
+use tokio::sync::{RwLock as TokioRwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::error;
@@ -385,11 +385,10 @@ fn write_sql_to_csv<W: Write>(
         wtr.serialize(row.cells.as_slice())
             .map_err(|e| Box::new(EvalAltResult::from(e.to_string())))?;
     }
-    if !wrote_header
-        && let Some(cols) = rows.columns.as_ref() {
-            wtr.write_record(cols.keys())
-                .map_err(|e| Box::new(EvalAltResult::from(e.to_string())))?;
-        }
+    if !wrote_header && let Some(cols) = rows.columns.as_ref() {
+        wtr.write_record(cols.keys())
+            .map_err(|e| Box::new(EvalAltResult::from(e.to_string())))?;
+    }
 
     Ok(rows)
 }

@@ -15,10 +15,10 @@ use quinn::{
 };
 use quinn_proto::ConnectionStats;
 use tokio::{
-    sync::{mpsc, Mutex, RwLock},
+    sync::{Mutex, RwLock, mpsc},
     time::error::Elapsed,
 };
-use tracing::{debug, debug_span, info, warn, Instrument};
+use tracing::{Instrument, debug, debug_span, info, warn};
 
 use crate::api::peer::gossip_client_endpoint;
 
@@ -215,12 +215,13 @@ impl Transport {
         let mut lock = conn_lock.lock().await;
 
         if let Some(conn) = lock.as_ref()
-            && test_conn(conn) {
-                if let Err(e) = self.0.rtt_tx.try_send((addr, conn.rtt())) {
-                    debug!("could not send RTT for connection through sender: {e}");
-                }
-                return Ok(conn.clone());
+            && test_conn(conn)
+        {
+            if let Err(e) = self.0.rtt_tx.try_send((addr, conn.rtt())) {
+                debug!("could not send RTT for connection through sender: {e}");
             }
+            return Ok(conn.clone());
+        }
 
         // clear it, if there was one it didn't pass the test.
         *lock = None;

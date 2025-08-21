@@ -9,8 +9,8 @@ use std::{
 use crate::api::SqliteValue;
 use foca::Identity;
 use rusqlite::{
-    types::{FromSql, ToSqlOutput},
     ToSql,
+    types::{FromSql, ToSqlOutput},
 };
 use serde::{Deserialize, Serialize};
 use speedy::{Context, Readable, Reader, Writable, Writer};

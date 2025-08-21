@@ -302,9 +302,9 @@ pub async fn handle_notifications(
                         // notify of new cluster size
                         if let Ok(size) = members_len.try_into()
                             && let Err(e) = agent.tx_foca().send(FocaInput::ClusterSize(size)).await
-                            {
-                                error!("could not send new foca cluster size: {e}");
-                            }
+                        {
+                            error!("could not send new foca cluster size: {e}");
+                        }
                     }
                     MemberAddedResult::Updated => {
                         debug!("Member Updated {actor:?}");
@@ -340,9 +340,10 @@ pub async fn handle_notifications(
                     // notify of new cluster size
                     let member_len = { agent.members().read().states.len() as u32 };
                     if let Ok(size) = member_len.try_into()
-                        && let Err(e) = agent.tx_foca().send(FocaInput::ClusterSize(size)).await {
-                            error!("could not send new foca cluster size: {e}");
-                        }
+                        && let Err(e) = agent.tx_foca().send(FocaInput::ClusterSize(size)).await
+                    {
+                        error!("could not send new foca cluster size: {e}");
+                    }
                 }
                 counter!("corro.swim.notification", "type" => "memberdown").increment(1);
             }
@@ -673,9 +674,10 @@ pub async fn handle_changes(
         if let Some(mut seqs) = change.seqs().cloned() {
             let v = *change.versions().start();
             if let Some(seen_seqs) = seen.get(&(change.actor_id, v))
-                && seqs.all(|seq| seen_seqs.contains(&seq)) {
-                    continue;
-                }
+                && seqs.all(|seq| seen_seqs.contains(&seq))
+            {
+                continue;
+            }
         } else {
             // empty versions
             if change
@@ -718,10 +720,10 @@ pub async fn handle_changes(
                 .read("handle_change(contains?)", change.actor_id.as_simple())
                 .await
                 .contains_all(change.versions(), change.seqs())
-            {
-                trace!("already seen, stop disseminating");
-                continue;
-            }
+        {
+            trace!("already seen, stop disseminating");
+            continue;
+        }
 
         // drop old items when the queue is full.
         if queue.len() >= max_queue_len {

@@ -4,8 +4,8 @@
 use antithesis_sdk::assert_always;
 use arc_swap::ArcSwap;
 use camino::Utf8PathBuf;
-use klukai_types::tripwire::Tripwire;
 use indexmap::IndexMap;
+use klukai_types::tripwire::Tripwire;
 use metrics::counter;
 use parking_lot::RwLock;
 use rusqlite::{Connection, OptionalExtension};
@@ -19,8 +19,8 @@ use std::{
 use tokio::{
     net::TcpListener,
     sync::{
-        mpsc::{channel as tokio_channel, Receiver as TokioReceiver},
         RwLock as TokioRwLock, Semaphore,
+        mpsc::{Receiver as TokioReceiver, channel as tokio_channel},
     },
 };
 use tracing::{debug, error, info, trace, warn};
@@ -30,7 +30,7 @@ use crate::{
     api::{
         peer::gossip_server_endpoint,
         public::{
-            pubsub::{process_sub_channel, MatcherBroadcastCache, SharedMatcherBroadcastCache},
+            pubsub::{MatcherBroadcastCache, SharedMatcherBroadcastCache, process_sub_channel},
             update::SharedUpdateBroadcastCache,
         },
     },
@@ -39,15 +39,15 @@ use crate::{
 use klukai_types::{
     actor::ActorId,
     agent::{
-        migrate, Agent, AgentConfig, Booked, BookedVersions, LockRegistry, LockState, SplitPool,
+        Agent, AgentConfig, Booked, BookedVersions, LockRegistry, LockState, SplitPool, migrate,
     },
     base::CrsqlDbVersion,
     broadcast::{BroadcastInput, ChangeSource, ChangeV1, FocaInput},
-    channel::{bounded, CorroReceiver},
+    channel::{CorroReceiver, bounded},
     config::Config,
     members::Members,
     pubsub::{Matcher, SubsManager},
-    schema::{init_schema, Schema},
+    schema::{Schema, init_schema},
     sqlite::CrConn,
     updates::UpdatesManager,
 };
@@ -307,35 +307,36 @@ async fn setup_spawn_subscriptions(
         while let Ok(Some(entry)) = dir.next_entry().await {
             let path_str = entry.path().display().to_string();
             if let Some(sub_id_str) = path_str.strip_prefix(subs_path.as_str())
-                && let Ok(sub_id) = sub_id_str.trim_matches('/').parse() {
-                    let (_, created) = match subs_manager.restore(
-                        sub_id,
-                        &subs_path,
-                        schema,
-                        pool,
-                        tripwire.clone(),
-                    ) {
-                        Ok(res) => res,
-                        Err(e) => {
-                            error!(%sub_id, "could not restore subscription: {e}");
-                            to_cleanup.push(sub_id);
-                            continue;
-                        }
-                    };
+                && let Ok(sub_id) = sub_id_str.trim_matches('/').parse()
+            {
+                let (_, created) = match subs_manager.restore(
+                    sub_id,
+                    &subs_path,
+                    schema,
+                    pool,
+                    tripwire.clone(),
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        error!(%sub_id, "could not restore subscription: {e}");
+                        to_cleanup.push(sub_id);
+                        continue;
+                    }
+                };
 
-                    info!(%sub_id, "Restored subscription");
+                info!(%sub_id, "Restored subscription");
 
-                    let (sub_tx, _) = tokio::sync::broadcast::channel(10240);
+                let (sub_tx, _) = tokio::sync::broadcast::channel(10240);
 
-                    tokio::spawn(process_sub_channel(
-                        subs_manager.clone(),
-                        sub_id,
-                        sub_tx.clone(),
-                        created.evt_rx,
-                    ));
+                tokio::spawn(process_sub_channel(
+                    subs_manager.clone(),
+                    sub_id,
+                    sub_tx.clone(),
+                    created.evt_rx,
+                ));
 
-                    subs_bcast_cache.insert(sub_id, sub_tx);
-                }
+                subs_bcast_cache.insert(sub_id, sub_tx);
+            }
         }
     }
 

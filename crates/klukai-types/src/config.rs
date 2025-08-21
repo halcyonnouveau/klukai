@@ -2,7 +2,7 @@ use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
 
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
-use serde_with::{formats::PreferOne, serde_as, OneOrMany};
+use serde_with::{OneOrMany, formats::PreferOne, serde_as};
 
 pub const DEFAULT_GOSSIP_PORT: u16 = 4001;
 const DEFAULT_GOSSIP_IDLE_TIMEOUT: u32 = 30;

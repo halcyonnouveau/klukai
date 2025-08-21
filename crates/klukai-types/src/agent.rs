@@ -1,6 +1,6 @@
 use std::{
     cmp,
-    collections::{btree_map, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet, btree_map},
     fmt,
     future::Future,
     io,
@@ -8,8 +8,8 @@ use std::{
     ops::{Deref, DerefMut, RangeInclusive},
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -22,12 +22,12 @@ use indexmap::IndexMap;
 use metrics::{gauge, histogram};
 use parking_lot::RwLock;
 use rangemap::RangeInclusiveSet;
-use rusqlite::{named_params, Connection, OpenFlags, OptionalExtension, Transaction};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, named_params};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::{
     runtime::Handle,
-    sync::{oneshot, Semaphore},
+    sync::{Semaphore, oneshot},
 };
 use tokio::{
     sync::{
@@ -46,13 +46,13 @@ use crate::{
     actor::{Actor, ActorId, ClusterId},
     base::{CrsqlDbVersion, CrsqlSeq},
     broadcast::{BroadcastInput, ChangeSource, ChangeV1, FocaInput, Timestamp},
-    channel::{bounded, CorroSender},
+    channel::{CorroSender, bounded},
     config::Config,
     pubsub::SubsManager,
     schema::Schema,
     sqlite::{
-        rusqlite_to_crsqlite, rusqlite_to_crsqlite_write, setup_conn, CrConn, Migration,
-        SqlitePool, SqlitePoolError,
+        CrConn, Migration, SqlitePool, SqlitePoolError, rusqlite_to_crsqlite,
+        rusqlite_to_crsqlite_write, setup_conn,
     },
     sqlite_pool,
     updates::UpdatesManager,

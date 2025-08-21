@@ -5,8 +5,9 @@ use std::time::Instant;
 use crate::api::public::execute_schema;
 use crate::{
     agent::{
+        AgentOptions,
         handlers::{self, spawn_handle_db_maintenance},
-        metrics, setup, util, AgentOptions,
+        metrics, setup, util,
     },
     broadcast::runtime_loop,
     transport::Transport,
@@ -19,8 +20,8 @@ use klukai_types::{
     config::{Config, PerfConfig},
 };
 
-use klukai_types::{spawn::spawn_counted, tripwire::Tripwire};
 use futures::{FutureExt, StreamExt, TryStreamExt};
+use klukai_types::{spawn::spawn_counted, tripwire::Tripwire};
 use tokio::task::JoinHandle;
 use tracing::{error, info};
 
@@ -93,9 +94,10 @@ async fn run(
     // Load schema from paths
     let stmts = util::read_files_from_paths(&agent.config().db.schema_paths).await?;
     if !stmts.is_empty()
-        && let Err(e) = execute_schema(&agent, stmts).await {
-            error!("could not execute schema: {e}");
-        }
+        && let Err(e) = execute_schema(&agent, stmts).await
+    {
+        error!("could not execute schema: {e}");
+    }
 
     let mut handles = vec![];
     // Setup client http API

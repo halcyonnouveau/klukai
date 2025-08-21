@@ -1,8 +1,9 @@
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
-use axum::{http::StatusCode, response::IntoResponse, Extension};
+use axum::{Extension, http::StatusCode, response::IntoResponse};
 use bytes::{BufMut, Bytes, BytesMut};
-use compact_str::{format_compact, ToCompactString};
+use compact_str::{ToCompactString, format_compact};
+use futures::future::poll_fn;
 use klukai_types::{
     agent::Agent,
     api::{ChangeId, QueryEvent, QueryEventMeta, Statement},
@@ -11,16 +12,15 @@ use klukai_types::{
     tripwire::Tripwire,
     updates::Handle,
 };
-use futures::future::poll_fn;
 use rusqlite::Connection;
 use serde::Deserialize;
 use tokio::{
     sync::{
+        RwLock as TokioRwLock,
         broadcast::{self, error::RecvError},
         mpsc::{self, error::TryRecvError},
-        RwLock as TokioRwLock,
     },
-    task::{block_in_place, JoinError},
+    task::{JoinError, block_in_place},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
@@ -448,9 +448,12 @@ pub async fn catch_up_sub(
                 };
 
                 if let QueryEventMeta::Change(change_id) = meta
-                    && let Err(_e) = queue_tx.try_send((buf, change_id)) {
-                        return Err(eyre::eyre!("catching up too slowly, gave up after buffering {MAX_EVENTS_BUFFER_SIZE} events"));
-                    }
+                    && let Err(_e) = queue_tx.try_send((buf, change_id))
+                {
+                    return Err(eyre::eyre!(
+                        "catching up too slowly, gave up after buffering {MAX_EVENTS_BUFFER_SIZE} events"
+                    ));
+                }
             }
             Ok(sub_rx)
         }
@@ -873,13 +876,15 @@ async fn forward_bytes_to_body_sender(
     }
 
     if !buf.is_empty()
-        && let Err(e) = tx.send_data(buf.freeze()).await {
-            warn!(%sub_id, "could not forward last subscription query event to receiver: {e}");
-        }
+        && let Err(e) = tx.send_data(buf.freeze()).await
+    {
+        warn!(%sub_id, "could not forward last subscription query event to receiver: {e}");
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use http_body::Body;
     use klukai_types::actor::ActorId;
     use klukai_types::api::NotifyEvent;
     use klukai_types::api::{ColumnName, TableName};
@@ -894,7 +899,6 @@ mod tests {
         config::Config,
         pubsub::ChangeType,
     };
-    use http_body::Body;
     use serde::de::DeserializeOwned;
     use std::ops::RangeInclusive;
     use std::time::Instant;
@@ -903,8 +907,8 @@ mod tests {
 
     use super::*;
     use crate::agent::process_multiple_changes;
-    use crate::api::public::update::{api_v1_updates, SharedUpdateBroadcastCache};
     use crate::api::public::TimeoutParams;
+    use crate::api::public::update::{SharedUpdateBroadcastCache, api_v1_updates};
     use crate::{
         agent::setup,
         api::public::{api_v1_db_schema, api_v1_transactions},
@@ -1294,12 +1298,14 @@ mod tests {
                 NotifyEvent::Notify(ChangeType::Delete, pk) => {
                     assert_eq!(pk, vec!["service-id-6".into()]);
                     // check that we dont get an update after
-                    assert!(tokio::time::timeout(
-                        Duration::from_secs(2),
-                        notify_rows.recv::<NotifyEvent>()
-                    )
-                    .await
-                    .is_err());
+                    assert!(
+                        tokio::time::timeout(
+                            Duration::from_secs(2),
+                            notify_rows.recv::<NotifyEvent>()
+                        )
+                        .await
+                        .is_err()
+                    );
                 }
                 _ => panic!("expected notify event"),
             }

@@ -1,8 +1,8 @@
 use assert_cmd::prelude::OutputAssertExt;
+use escargot::CargoRun;
 use klukai_tests::launch_test_agent;
 use klukai_types::spawn::wait_for_all_pending_handles;
 use klukai_types::tripwire::Tripwire;
-use escargot::CargoRun;
 use once_cell::sync::Lazy;
 
 static CORROSION_BIN: Lazy<CargoRun> = Lazy::new(|| {

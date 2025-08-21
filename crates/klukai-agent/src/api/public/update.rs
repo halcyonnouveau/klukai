@@ -1,19 +1,20 @@
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
 use antithesis_sdk::assert_sometimes;
-use axum::{http::StatusCode, response::IntoResponse, Extension};
+use axum::{Extension, http::StatusCode, response::IntoResponse};
 use bytes::{BufMut, Bytes, BytesMut};
 use compact_str::ToCompactString;
+use futures::future::poll_fn;
 use klukai_types::{
     agent::Agent,
     api::NotifyEvent,
     tripwire::Tripwire,
     updates::{Handle, UpdateCreated, UpdateHandle, UpdatesManager},
 };
-use futures::future::poll_fn;
 use tokio::sync::{
+    RwLock as TokioRwLock,
     broadcast::{self, error::RecvError},
-    mpsc, RwLock as TokioRwLock,
+    mpsc,
 };
 use tracing::{debug, info, warn};
 use uuid::Uuid;

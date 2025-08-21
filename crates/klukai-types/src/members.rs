@@ -154,16 +154,17 @@ impl Members {
                         / rtt.buf.len() as u64
                 })
             })
-                && let Some(state) = self.states.get_mut(actor_id) {
-                    // We check which range-bucket the RTT is
-                    // contained in, then update the stored index
-                    for (ring, n) in RING_BUCKETS.iter().enumerate() {
-                        if n.contains(&avg) {
-                            state.ring = Some(ring as u8);
-                            break;
-                        }
-                    }
+            && let Some(state) = self.states.get_mut(actor_id)
+        {
+            // We check which range-bucket the RTT is
+            // contained in, then update the stored index
+            for (ring, n) in RING_BUCKETS.iter().enumerate() {
+                if n.contains(&avg) {
+                    state.ring = Some(ring as u8);
+                    break;
                 }
+            }
+        }
     }
 
     /// Get member addresses where the ring index is `0` (meaning a

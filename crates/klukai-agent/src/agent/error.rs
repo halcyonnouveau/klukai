@@ -1,10 +1,10 @@
 use crate::{api::peer::SyncError, transport::TransportError};
+use hyper::StatusCode;
 use klukai_types::{
     agent::ChangeError,
     sqlite::SqlitePoolError,
     sync::{SyncMessageDecodeError, SyncMessageEncodeError},
 };
-use hyper::StatusCode;
 use tokio::time::error::Elapsed;
 
 #[derive(Debug, thiserror::Error)]

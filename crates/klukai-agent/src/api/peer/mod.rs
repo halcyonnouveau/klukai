@@ -8,37 +8,37 @@ use std::time::{Duration, Instant};
 use antithesis_sdk::assert_sometimes;
 
 use bytes::{BufMut, BytesMut};
+use futures::stream::FuturesUnordered;
+use futures::{Future, Stream, TryFutureExt, TryStreamExt};
+use itertools::Itertools;
 use klukai_types::actor::ClusterId;
 use klukai_types::agent::{Agent, SplitPool};
 use klukai_types::base::{CrsqlDbVersion, CrsqlSeq};
 use klukai_types::broadcast::{
     BiPayload, BiPayloadV1, ChangeSource, ChangeV1, Changeset, Timestamp,
 };
-use klukai_types::change::{row_to_change, Change, ChunkedChanges};
+use klukai_types::change::{Change, ChunkedChanges, row_to_change};
 use klukai_types::config::{GossipConfig, TlsClientConfig};
 use klukai_types::sync::{
-    generate_sync, SyncMessage, SyncMessageEncodeError, SyncMessageV1, SyncNeedV1, SyncRejectionV1,
-    SyncRequestV1, SyncStateV1, SyncTraceContextV1,
+    SyncMessage, SyncMessageEncodeError, SyncMessageV1, SyncNeedV1, SyncRejectionV1, SyncRequestV1,
+    SyncStateV1, SyncTraceContextV1, generate_sync,
 };
-use futures::stream::FuturesUnordered;
-use futures::{Future, Stream, TryFutureExt, TryStreamExt};
-use itertools::Itertools;
 use metrics::counter;
 use quinn::crypto::rustls::{QuicClientConfig, QuicServerConfig};
 use quinn::{RecvStream, SendStream, WriteError};
 use rangemap::RangeInclusiveSet;
-use rusqlite::{named_params, Connection};
+use rusqlite::{Connection, named_params};
 use speedy::Writable;
 use std::string::String;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::mpsc::{self, unbounded_channel, Sender};
+use tokio::sync::mpsc::{self, Sender, unbounded_channel};
 use tokio::task::block_in_place;
 use tokio::time::timeout;
-use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 use tokio_stream::StreamExt as TokioStreamExt;
+use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
 // use tokio_stream::StreamExt as TokioStreamExt;
 use tokio_util::codec::{Encoder, FramedRead, LengthDelimitedCodec};
-use tracing::{debug, error, info, info_span, trace, warn, Instrument};
+use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::agent::SyncRecvError;
@@ -327,7 +327,6 @@ async fn build_quinn_client_config(config: &GossipConfig) -> eyre::Result<quinn:
 
             let client_crypto = client_crypto.with_root_certificates(root_store);
 
-            
             if let Some(client_config) = &tls.client {
                 let (certs, key) = client_cert_auth(client_config)?;
                 let certs: Vec<rustls_pki_types::CertificateDer<'static>> =
@@ -346,7 +345,7 @@ async fn build_quinn_client_config(config: &GossipConfig) -> eyre::Result<quinn:
             let client_crypto = client_crypto
                 .dangerous()
                 .with_custom_certificate_verifier(SkipServerVerification::new());
-            
+
             if let Some(client_config) = &tls.client {
                 let (certs, key) = client_cert_auth(client_config)?;
                 let certs: Vec<rustls_pki_types::CertificateDer<'static>> =
@@ -1733,24 +1732,24 @@ mod tests {
     use crate::api::public::api_v1_transactions;
     use axum::{Extension, Json};
     use camino::Utf8PathBuf;
-    use klukai_tests::launch_test_agent;
+    use hyper::StatusCode;
     use klukai_tests::TEST_SCHEMA;
+    use klukai_tests::launch_test_agent;
     use klukai_types::api::Statement;
     use klukai_types::base::CrsqlDbVersion;
     use klukai_types::tripwire::Tripwire;
     use klukai_types::{
         api::{ColumnName, TableName},
-        config::{Config, TlsConfig, DEFAULT_GOSSIP_CLIENT_ADDR},
+        config::{Config, DEFAULT_GOSSIP_CLIENT_ADDR, TlsConfig},
         pubsub::pack_columns,
         tls::{generate_ca, generate_client_cert, generate_server_cert},
     };
-    use hyper::StatusCode;
     use rand::{Rng, RngCore};
     use tempfile::TempDir;
 
     use crate::{
         agent::{process_multiple_changes, setup},
-        api::public::{api_v1_db_schema, TimeoutParams},
+        api::public::{TimeoutParams, api_v1_db_schema},
     };
 
     use super::*;

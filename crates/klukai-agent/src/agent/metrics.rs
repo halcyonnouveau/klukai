@@ -101,7 +101,8 @@ pub fn collect_metrics(agent: &Agent, transport: &Transport) {
     }
 
     if db_path.set_extension(format!("{}-wal", db_path.extension().unwrap_or_default()))
-        && let Ok(meta) = db_path.metadata() {
-            gauge!("corro.db.wal.size").set(meta.len() as f64);
-        }
+        && let Ok(meta) = db_path.metadata()
+    {
+        gauge!("corro.db.wal.size").set(meta.len() as f64);
+    }
 }

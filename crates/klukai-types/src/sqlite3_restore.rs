@@ -7,8 +7,8 @@ use std::{
 };
 
 use nix::{
-    fcntl::{fcntl, FcntlArg},
-    libc::{flock, SEEK_SET},
+    fcntl::{FcntlArg, fcntl},
+    libc::{SEEK_SET, flock},
 };
 use tracing::info;
 
@@ -85,9 +85,10 @@ pub fn restore<P1: AsRef<Path>, P2: AsRef<Path>>(
     let dst_journal_path = format!("{}-journal", dst.as_ref().display());
     info!("removing the journal file at: '{dst_journal_path}'");
     if let Err(e) = std::fs::remove_file(PathBuf::from(dst_journal_path))
-        && e.kind() != std::io::ErrorKind::NotFound {
-            return Err(e.into());
-        }
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(e.into());
+    }
 
     if dst_locked.is_wal() {
         let dst_wal_path = format!("{}-wal", dst.as_ref().display());

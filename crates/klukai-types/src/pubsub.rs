@@ -14,16 +14,15 @@ use crate::tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
 use async_trait::async_trait;
 use bytes::{Buf, BufMut};
 use camino::{Utf8Path, Utf8PathBuf};
-use compact_str::{format_compact, ToCompactString};
+use compact_str::{ToCompactString, format_compact};
 use enquote::unquote;
 use fallible_iterator::FallibleIterator;
 use indexmap::{IndexMap, IndexSet};
 use metrics::{counter, histogram};
 use parking_lot::{Condvar, Mutex, RwLock};
 use rusqlite::{
-    params_from_iter,
+    Connection, OptionalExtension, params_from_iter,
     types::{FromSqlError, ValueRef},
-    Connection, OptionalExtension,
 };
 use sqlite3_parser::{
     ast::{
@@ -33,7 +32,7 @@ use sqlite3_parser::{
     lexer::sql::Parser,
 };
 use tokio::{
-    sync::{mpsc, watch, AcquireError},
+    sync::{AcquireError, mpsc, watch},
     task::block_in_place,
 };
 use tokio_util::sync::{CancellationToken, DropGuard, WaitForCancellationFuture};
@@ -672,48 +671,48 @@ impl Matcher {
                 && let OneSelect::Select {
                     where_clause, from, ..
                 } = &mut select.body.select
-                {
-                    *where_clause = if let Some(prev) = where_clause.take() {
-                        Some(Expr::Binary(
-                            Box::new(expr),
-                            Operator::And,
-                            Box::new(Expr::parenthesized(prev)),
-                        ))
-                    } else {
-                        Some(expr)
-                    };
+            {
+                *where_clause = if let Some(prev) = where_clause.take() {
+                    Some(Expr::Binary(
+                        Box::new(expr),
+                        Operator::And,
+                        Box::new(Expr::parenthesized(prev)),
+                    ))
+                } else {
+                    Some(expr)
+                };
 
-                    match from {
-                        Some(FromClause {
-                            joins: Some(joins), ..
-                        }) if idx > 0 => {
-                            // Replace LEFT JOIN with INNER join if the target is the joined table
-                            if let Some(JoinedSelectTable {
-                                operator:
-                                    JoinOperator::TypedJoin {
-                                        join_type:
-                                            join_type @ Some(JoinType::LeftOuter | JoinType::Left),
-                                        ..
-                                    },
-                                ..
-                            }) = joins.get_mut(idx - 1)
-                            {
-                                *join_type = Some(JoinType::Inner);
-                            };
+                match from {
+                    Some(FromClause {
+                        joins: Some(joins), ..
+                    }) if idx > 0 => {
+                        // Replace LEFT JOIN with INNER join if the target is the joined table
+                        if let Some(JoinedSelectTable {
+                            operator:
+                                JoinOperator::TypedJoin {
+                                    join_type:
+                                        join_type @ Some(JoinType::LeftOuter | JoinType::Left),
+                                    ..
+                                },
+                            ..
+                        }) = joins.get_mut(idx - 1)
+                        {
+                            *join_type = Some(JoinType::Inner);
+                        };
 
-                            // Remove all custom INDEXED BY clauses for the table as the most efficient
-                            // way is to query it by the primary keys
-                            if let Some(JoinedSelectTable {
-                                table: SelectTable::Table(_, _, indexed @ Some(_)),
-                                ..
-                            }) = joins.get_mut(idx - 1)
-                            {
-                                *indexed = None
-                            };
-                        }
-                        _ => (),
-                    };
-                }
+                        // Remove all custom INDEXED BY clauses for the table as the most efficient
+                        // way is to query it by the primary keys
+                        if let Some(JoinedSelectTable {
+                            table: SelectTable::Table(_, _, indexed @ Some(_)),
+                            ..
+                        }) = joins.get_mut(idx - 1)
+                        {
+                            *indexed = None
+                        };
+                    }
+                    _ => (),
+                };
+            }
 
             let mut new_query = Cmd::Stmt(stmt).to_string();
             new_query.pop();
@@ -1637,10 +1636,11 @@ impl Matcher {
                                         rowid,
                                         cells,
                                         change_id,
-                                    )) {
-                                        warn!("could not send back row to matcher sub sender: {e}");
-                                        return Err(MatcherError::EventReceiverClosed);
-                                    }
+                                    ))
+                                {
+                                    warn!("could not send back row to matcher sub sender: {e}");
+                                    return Err(MatcherError::EventReceiverClosed);
+                                }
                                 _ = self.last_change_tx.send(change_id);
                             }
                             Err(e) => {
@@ -1885,14 +1885,15 @@ fn extract_expr_columns(
             let mut found = None;
             for tbl in parsed.table_columns.keys() {
                 if let Some(tbl) = schema.tables.get(tbl)
-                    && tbl.columns.contains_key(&check_col_name) {
-                        if found.is_some() {
-                            return Err(MatcherError::QualificationRequired {
-                                col_name: check_col_name,
-                            });
-                        }
-                        found = Some(tbl.name.as_str());
+                    && tbl.columns.contains_key(&check_col_name)
+                {
+                    if found.is_some() {
+                        return Err(MatcherError::QualificationRequired {
+                            col_name: check_col_name,
+                        });
                     }
+                    found = Some(tbl.name.as_str());
+                }
             }
 
             if let Some(found) = found {
@@ -1915,14 +1916,15 @@ fn extract_expr_columns(
             let mut found = None;
             for tbl in parsed.table_columns.keys() {
                 if let Some(tbl) = schema.tables.get(tbl)
-                    && tbl.columns.contains_key(&check_col_name) {
-                        if found.is_some() {
-                            return Err(MatcherError::QualificationRequired {
-                                col_name: check_col_name,
-                            });
-                        }
-                        found = Some(tbl.name.as_str());
+                    && tbl.columns.contains_key(&check_col_name)
+                {
+                    if found.is_some() {
+                        return Err(MatcherError::QualificationRequired {
+                            col_name: check_col_name,
+                        });
                     }
+                    found = Some(tbl.name.as_str());
+                }
             }
 
             if let Some(found) = found {
@@ -1990,7 +1992,7 @@ fn extract_expr_columns(
             parsed.children.push(extract_select_columns(rhs, schema)?);
         }
         expr @ Expr::InTable { .. } => {
-            return Err(MatcherError::UnsupportedExpr { expr: expr.clone() })
+            return Err(MatcherError::UnsupportedExpr { expr: expr.clone() });
         }
         Expr::IsNull(expr) => {
             extract_expr_columns(expr, schema, parsed)?;
@@ -2387,7 +2389,7 @@ mod tests {
         base::CrsqlDbVersion,
         change::row_to_change,
         schema::{apply_schema, parse_sql},
-        sqlite::{setup_conn, CrConn},
+        sqlite::{CrConn, setup_conn},
     };
     use klukai_tests::tempdir::TempDir;
 

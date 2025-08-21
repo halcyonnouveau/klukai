@@ -6,8 +6,8 @@ use std::{
 use crate::sqlite_pool::{self, Committable, SqliteConn};
 use once_cell::sync::Lazy;
 use rusqlite::{
-    functions::FunctionFlags, params, trace::TraceEventCodes, Connection, Error, Result,
-    Transaction,
+    Connection, Error, Result, Transaction, functions::FunctionFlags, params,
+    trace::TraceEventCodes,
 };
 use serde_json::Value;
 use tempfile::TempDir;
@@ -57,9 +57,10 @@ pub fn rusqlite_to_crsqlite(mut conn: rusqlite::Connection) -> rusqlite::Result<
         TraceEventCodes::SQLITE_TRACE_PROFILE,
         Some(|event| {
             if let rusqlite::trace::TraceEvent::Profile(stmt_ref, duration) = event
-                && duration >= SLOW_THRESHOLD {
-                    warn!("SLOW query {duration:?} => {}", stmt_ref.sql());
-                }
+                && duration >= SLOW_THRESHOLD
+            {
+                warn!("SLOW query {duration:?} => {}", stmt_ref.sql());
+            }
         }),
     );
 
@@ -203,7 +204,10 @@ pub fn migrate(conn: &mut Connection, migrations: Vec<Box<dyn Migration>>) -> ru
     let skip_n = migration_version(&tx).unwrap_or_default();
 
     if skip_n > migrations.len() {
-        warn!("Skipping migrations, database is at migration version {skip_n} which is greater than {}", migrations.len());
+        warn!(
+            "Skipping migrations, database is at migration version {skip_n} which is greater than {}",
+            migrations.len()
+        );
         return Ok(());
     }
 
@@ -273,7 +277,7 @@ fn corro_json_contains(selector: Value, object: Value) -> bool {
 mod tests {
     use crate::sqlite_pool::Config;
     use crate::sqlite_pool::InterruptibleTransaction;
-    use futures::{stream::FuturesUnordered, TryStreamExt};
+    use futures::{TryStreamExt, stream::FuturesUnordered};
     use rusqlite::{Connection, Result};
     use tokio::task::block_in_place;
 

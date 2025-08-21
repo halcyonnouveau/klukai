@@ -6,9 +6,10 @@ use std::{
 };
 
 use antithesis_sdk::assert_sometimes;
-use axum::{extract::ConnectInfo, response::IntoResponse, Extension};
+use axum::{Extension, extract::ConnectInfo, response::IntoResponse};
 use bytes::{BufMut, BytesMut};
 use compact_str::ToCompactString;
+use hyper::StatusCode;
 use klukai_types::{
     agent::{Agent, ChangeError},
     api::{
@@ -17,7 +18,7 @@ use klukai_types::{
     },
     base::CrsqlDbVersion,
     broadcast::Timestamp,
-    change::{insert_local_changes, InsertChangesInfo, SqliteValue},
+    change::{InsertChangesInfo, SqliteValue, insert_local_changes},
     schema::{apply_schema, parse_sql},
     sqlite::SqlitePoolError,
 };
@@ -25,9 +26,8 @@ use klukai_types::{
     spawn::spawn_counted,
     sqlite_pool::{Committable, InterruptibleTransaction},
 };
-use hyper::StatusCode;
 use metrics::{counter, histogram};
-use rusqlite::{params_from_iter, ToSql, Transaction};
+use rusqlite::{ToSql, Transaction, params_from_iter};
 use serde::Deserialize;
 
 use tokio::{
@@ -200,8 +200,6 @@ pub async fn api_v1_transactions(
     assert_sometimes!(true, "Corrosion receives transactions through HTTP API");
     let res = make_broadcastable_changes(&agent, params.timeout, move |tx| {
         let mut total_rows_affected = 0;
-
-        
 
         statements
             .iter()
@@ -706,6 +704,7 @@ pub async fn api_v1_table_stats(
 
 #[cfg(test)]
 mod tests {
+    use http_body::Body;
     use klukai_types::tripwire::Tripwire;
     use klukai_types::{
         api::RowId,
@@ -714,7 +713,6 @@ mod tests {
         config::Config,
         schema::SqliteType,
     };
-    use http_body::Body;
     use tokio::sync::mpsc::error::TryRecvError;
     use tokio_util::codec::{Decoder, LinesCodec};
 
