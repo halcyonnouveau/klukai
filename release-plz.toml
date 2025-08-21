@@ -1,5 +1,4 @@
 [workspace]
-# All crates will use the same version
 allow_dirty = false
 publish_allow_dirty = false
 git_release_enable = true
