@@ -1124,10 +1124,7 @@ mod tests {
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(
-                    RowId(2),
-                    vec![2i64.into(), "service-name-2".into()]
-                )
+                QueryEvent::Row(RowId(2), vec![2i64.into(), "service-name-2".into()])
             );
 
             let evt = rows.recv::<QueryEvent>().await.unwrap().unwrap();
@@ -1312,34 +1309,22 @@ mod tests {
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(
-                    RowId(2),
-                    vec![2i64.into(), "service-name-2".into()]
-                )
+                QueryEvent::Row(RowId(2), vec![2i64.into(), "service-name-2".into()])
             );
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(
-                    RowId(3),
-                    vec![3i64.into(), "service-name-3".into()],
-                )
+                QueryEvent::Row(RowId(3), vec![3i64.into(), "service-name-3".into()],)
             );
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(
-                    RowId(4),
-                    vec![4i64.into(), "service-name-4".into()],
-                )
+                QueryEvent::Row(RowId(4), vec![4i64.into(), "service-name-4".into()],)
             );
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(
-                    RowId(5),
-                    vec![5i64.into(), "service-name-5".into()]
-                )
+                QueryEvent::Row(RowId(5), vec![5i64.into(), "service-name-5".into()])
             );
 
             let (status_code, _) = api_v1_transactions(

@@ -939,10 +939,7 @@ mod tests {
 
         assert_eq!(
             row,
-            QueryEvent::Row(
-                RowId(2),
-                vec![2i64.into(), "service-name-2".into()]
-            )
+            QueryEvent::Row(RowId(2), vec![2i64.into(), "service-name-2".into()])
         );
 
         if let Some(frame) = body.frame().await

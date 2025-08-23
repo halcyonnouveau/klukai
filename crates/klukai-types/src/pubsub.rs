@@ -295,7 +295,7 @@ impl Handle for MatcherHandle {
     fn cleanup(&self) -> impl std::future::Future<Output = ()> + Send {
         let cancel = self.inner.cancel.clone();
         let id = self.inner.id;
-        
+
         async move {
             cancel.cancel();
             info!(sub_id = %id, "Canceled subscription");
@@ -690,14 +690,11 @@ impl Matcher {
                         joins: Some(joins), ..
                     }) if idx > 0 => {
                         // Replace LEFT JOIN with INNER join if the target is the joined table
-                        if let Some(joined_table) = joins.get_mut(idx - 1) {
-                            if let JoinOperator::TypedJoin(Some(join_type)) = &joined_table.operator
-                            {
-                                if join_type.contains(JoinType::LEFT) {
-                                    joined_table.operator =
-                                        JoinOperator::TypedJoin(Some(JoinType::INNER));
-                                }
-                            }
+                        if let Some(joined_table) = joins.get_mut(idx - 1)
+                            && let JoinOperator::TypedJoin(Some(join_type)) = &joined_table.operator
+                            && join_type.contains(JoinType::LEFT)
+                        {
+                            joined_table.operator = JoinOperator::TypedJoin(Some(JoinType::INNER));
                         };
 
                         // Remove all custom INDEXED BY clauses for the table as the most efficient
