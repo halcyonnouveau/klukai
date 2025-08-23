@@ -30,7 +30,7 @@ use klukai_types::{
 };
 
 use bytes::Bytes;
-use foca::Notification;
+use foca::OwnedNotification;
 use indexmap::IndexMap;
 use indexmap::map::Entry;
 use klukai_types::broadcast::Timestamp;
@@ -282,12 +282,12 @@ pub async fn handle_gossip_to_send(
 /// and apply any incoming changes to the local actor/ agent state.
 pub async fn handle_notifications(
     agent: Agent,
-    mut notification_rx: CorroReceiver<Notification<Actor>>,
+    mut notification_rx: CorroReceiver<OwnedNotification<Actor>>,
 ) {
     while let Some(notification) = notification_rx.recv().await {
         trace!("handle notification");
         match notification {
-            Notification::MemberUp(actor) => {
+            OwnedNotification::MemberUp(actor) => {
                 let member_added_res = agent.members().write().add_member(&actor);
                 info!("Member Up {actor:?} (result: {member_added_res:?})");
 
@@ -330,7 +330,7 @@ pub async fn handle_notifications(
                 }
                 counter!("corro.swim.notification", "type" => "memberup").increment(1);
             }
-            Notification::MemberDown(actor) => {
+            OwnedNotification::MemberDown(actor) => {
                 let removed = { agent.members().write().remove_member(&actor) };
                 info!("Member Down {actor:?} (removed: {removed})");
                 if removed {
@@ -347,22 +347,26 @@ pub async fn handle_notifications(
                 }
                 counter!("corro.swim.notification", "type" => "memberdown").increment(1);
             }
-            Notification::Active => {
+            OwnedNotification::Active => {
                 info!("Current node is considered ACTIVE");
                 counter!("corro.swim.notification", "type" => "active").increment(1);
             }
-            Notification::Idle => {
+            OwnedNotification::Idle => {
                 warn!("Current node is considered IDLE");
                 counter!("corro.swim.notification", "type" => "idle").increment(1);
             }
             // this happens when we leave the cluster
-            Notification::Defunct => {
+            OwnedNotification::Defunct => {
                 debug!("Current node is considered DEFUNCT");
                 counter!("corro.swim.notification", "type" => "defunct").increment(1);
             }
-            Notification::Rejoin(id) => {
+            OwnedNotification::Rejoin(id) => {
                 info!("Rejoined the cluster with id: {id:?}");
                 counter!("corro.swim.notification", "type" => "rejoin").increment(1);
+            }
+            OwnedNotification::Rename(old_id, new_id) => {
+                info!("Member renamed from {old_id:?} to {new_id:?}");
+                counter!("corro.swim.notification", "type" => "rename").increment(1);
             }
         }
     }
@@ -837,7 +841,7 @@ pub async fn handle_sync(
         let desired_count = (candidates.len() / 100).clamp(3, 10);
         debug!("Selected {desired_count} nodes to sync with");
 
-        let mut rng = StdRng::from_entropy();
+        let mut rng = StdRng::from_os_rng();
 
         let mut choices = candidates
             .into_iter()

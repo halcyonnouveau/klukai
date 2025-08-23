@@ -123,7 +123,7 @@ pub async fn initialise_foca(agent: &Agent) {
                     .tx_foca()
                     .send(FocaInput::Cmd(FocaCmd::Rejoin(cb_tx)))
                     .await?;
-                cb_rx.await??;
+                cb_rx.await?.map_err(|e| eyre::eyre!("Foca error: {}", e))?;
                 Ok(())
             }
 

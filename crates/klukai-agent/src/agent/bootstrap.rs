@@ -48,7 +48,7 @@ pub async fn generate_bootstrap(
         })?;
     }
 
-    let mut rng = StdRng::from_entropy();
+    let mut rng = StdRng::from_os_rng();
 
     Ok(addrs
         .into_iter()

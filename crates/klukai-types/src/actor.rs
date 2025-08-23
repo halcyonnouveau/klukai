@@ -182,18 +182,15 @@ impl From<SocketAddr> for Actor {
 }
 
 impl Identity for Actor {
-    // Since a client outside the cluster will not be aware of our
-    // `bump` field, we implement the optional trait method
-    // `has_same_prefix` to allow anyone that knows our `addr`
-    // to join our cluster.
-    fn has_same_prefix(&self, other: &Self) -> bool {
-        // this happens if we're announcing ourselves to another node
-        // we don't yet have any info about them, except their gossip addr
-        if other.id.is_nil() || self.id.is_nil() {
-            self.addr.eq(&other.addr)
-        } else {
-            self.id.eq(&other.id)
-        }
+    type Addr = SocketAddr;
+
+    fn addr(&self) -> Self::Addr {
+        self.addr
+    }
+
+    fn win_addr_conflict(&self, adversary: &Self) -> bool {
+        // Win if we have a more recent timestamp
+        self.ts > adversary.ts
     }
 
     // And by implementing `renew` we enable automatic rejoining:

@@ -22,15 +22,12 @@ use klukai_types::{
     sqlite3_restore,
 };
 use once_cell::sync::OnceCell;
-use opentelemetry::{
-    KeyValue, global,
-    sdk::{
-        Resource,
-        propagation::TraceContextPropagator,
-        trace::{self, BatchConfig},
-    },
-};
+use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    Resource,
+    propagation::TraceContextPropagator,
+};
 use rusqlite::{Connection, OptionalExtension};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{
@@ -72,36 +69,38 @@ fn init_tracing(cli: &Cli) -> Result<Option<admin::TracingHandle>, ConfigError> 
         let sub = tracing_subscriber::registry::Registry::default().with(env_filter);
 
         if let Some(otel) = &config.telemetry.open_telemetry {
-            let otlp_exporter = opentelemetry_otlp::new_exporter().tonic().with_env();
-            let otlp_exporter = match otel {
-                OtelConfig::FromEnv => otlp_exporter,
-                OtelConfig::Exporter { endpoint } => otlp_exporter.with_endpoint(endpoint),
-            };
+            let mut tonic_builder = opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic();
+            
+            if let OtelConfig::Exporter { endpoint } = otel {
+                tonic_builder = tonic_builder.with_endpoint(endpoint.clone());
+            }
+            
+            let otlp_exporter = tonic_builder.build()
+                .expect("Failed to build OTLP exporter");
 
-            let batch_config = BatchConfig::default().with_max_queue_size(10240);
-
-            let trace_config = trace::config().with_resource(Resource::new([
+            let resource = Resource::builder().with_attributes([
                 KeyValue::new(
-                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                    opentelemetry_semantic_conventions::attribute::SERVICE_NAME,
                     "corrosion",
                 ),
                 KeyValue::new(
-                    opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                    opentelemetry_semantic_conventions::attribute::SERVICE_VERSION,
                     VERSION,
                 ),
                 KeyValue::new(
-                    opentelemetry_semantic_conventions::resource::HOST_NAME,
+                    "host.name",
                     hostname::get().unwrap().to_string_lossy().into_owned(),
                 ),
-            ]));
+            ]).build();
 
-            let tracer = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(otlp_exporter)
-                .with_trace_config(trace_config)
-                .with_batch_config(batch_config)
-                .install_batch(opentelemetry::runtime::Tokio)
-                .expect("Failed to initialize OpenTelemetry OTLP exporter.");
+            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_resource(resource)
+                .with_batch_exporter(otlp_exporter)
+                .build();
+            
+            let tracer = tracer_provider.tracer("corrosion");
+            global::set_tracer_provider(tracer_provider);
 
             let sub = sub.with(tracing_opentelemetry::layer().with_tracer(tracer));
             match config.log.format {

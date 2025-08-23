@@ -16,7 +16,6 @@ path = "src/main.rs"
 [dependencies]
 antithesis_sdk = { workspace = true }
 build-info = { workspace = true }
-bytes = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }
 compact_str = { workspace = true }
@@ -31,7 +30,6 @@ eyre = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hostname = { workspace = true }
-hyper = { workspace = true }
 indexmap = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
@@ -39,6 +37,7 @@ notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
 opentelemetry-otlp = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true }
 rangemap = { workspace = true }
