@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/halcyonnouveau/klukai/compare/klukai-v0.1.1...klukai-v0.1.2) - 2025-08-23
+
+### Other
+
+- update Cargo.lock dependencies
+
 ## [0.1.1](https://github.com/halcyonnouveau/klukai/compare/klukai-v0.1.0...klukai-v0.1.1) - 2025-08-23
 
 ### Other
