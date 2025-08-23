@@ -11,10 +11,10 @@ homepage = "https://github.com/halcyonnouveau/klukai"
 
 [workspace.dependencies]
 # Workspace crates
-klukai-agent = { version = "0.1.1", path = "crates/klukai-agent" }
-klukai-client = { version = "0.2.0", path = "crates/klukai-client" }
+klukai-agent = { version = "0.1.2", path = "crates/klukai-agent" }
+klukai-client = { version = "0.2.1", path = "crates/klukai-client" }
 klukai-tests = { path = "crates/klukai-tests" }
-klukai-types = { version = "0.2.0", path = "crates/klukai-types" }
+klukai-types = { version = "0.2.1", path = "crates/klukai-types" }
 
 # Async runtime and utilities
 futures = "0.3"
