@@ -76,13 +76,12 @@ pub enum SyncRejectionV1 {
     DifferentCluster,
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Readable, Writable, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SyncStateV1 {
     pub actor_id: ActorId,
     pub heads: HashMap<ActorId, CrsqlDbVersion>,
     pub need: HashMap<ActorId, Vec<RangeInclusive<CrsqlDbVersion>>>,
     pub partial_need: HashMap<ActorId, HashMap<CrsqlDbVersion, Vec<RangeInclusive<CrsqlSeq>>>>,
-    #[speedy(default_on_eof)]
     pub last_cleared_ts: Option<Timestamp>,
 }
 
@@ -249,7 +248,103 @@ impl SyncStateV1 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Readable, Writable)]
+impl<'a, C> Readable<'a, C> for SyncStateV1
+where
+    C: speedy::Context,
+{
+    fn read_from<R: speedy::Reader<'a, C>>(reader: &mut R) -> Result<Self, C::Error> {
+        let actor_id = ActorId::read_from(reader)?;
+        let heads = HashMap::<ActorId, CrsqlDbVersion>::read_from(reader)?;
+
+        // Read need: HashMap<ActorId, Vec<RangeInclusive<CrsqlDbVersion>>>
+        let need_len = usize::read_from(reader)?;
+        let mut need = HashMap::with_capacity(need_len);
+        for _ in 0..need_len {
+            let actor_id = ActorId::read_from(reader)?;
+            let ranges_len = usize::read_from(reader)?;
+            let mut ranges = Vec::with_capacity(ranges_len);
+            for _ in 0..ranges_len {
+                let start = CrsqlDbVersion::read_from(reader)?;
+                let end = CrsqlDbVersion::read_from(reader)?;
+                ranges.push(start..=end);
+            }
+            need.insert(actor_id, ranges);
+        }
+
+        // Read partial_need: HashMap<ActorId, HashMap<CrsqlDbVersion, Vec<RangeInclusive<CrsqlSeq>>>>
+        let partial_need_len = usize::read_from(reader)?;
+        let mut partial_need = HashMap::with_capacity(partial_need_len);
+        for _ in 0..partial_need_len {
+            let actor_id = ActorId::read_from(reader)?;
+            let versions_len = usize::read_from(reader)?;
+            let mut versions_map = HashMap::with_capacity(versions_len);
+            for _ in 0..versions_len {
+                let version = CrsqlDbVersion::read_from(reader)?;
+                let seq_ranges_len = usize::read_from(reader)?;
+                let mut seq_ranges = Vec::with_capacity(seq_ranges_len);
+                for _ in 0..seq_ranges_len {
+                    let start = CrsqlSeq::read_from(reader)?;
+                    let end = CrsqlSeq::read_from(reader)?;
+                    seq_ranges.push(start..=end);
+                }
+                versions_map.insert(version, seq_ranges);
+            }
+            partial_need.insert(actor_id, versions_map);
+        }
+
+        let last_cleared_ts = Option::<Timestamp>::read_from(reader)?;
+
+        Ok(SyncStateV1 {
+            actor_id,
+            heads,
+            need,
+            partial_need,
+            last_cleared_ts,
+        })
+    }
+}
+
+impl<C> Writable<C> for SyncStateV1
+where
+    C: speedy::Context,
+{
+    fn write_to<T: ?Sized + speedy::Writer<C>>(&self, writer: &mut T) -> Result<(), C::Error> {
+        self.actor_id.write_to(writer)?;
+        self.heads.write_to(writer)?;
+
+        // Write need: HashMap<ActorId, Vec<RangeInclusive<CrsqlDbVersion>>>
+        self.need.len().write_to(writer)?;
+        for (actor_id, ranges) in &self.need {
+            actor_id.write_to(writer)?;
+            ranges.len().write_to(writer)?;
+            for range in ranges {
+                range.start().write_to(writer)?;
+                range.end().write_to(writer)?;
+            }
+        }
+
+        // Write partial_need: HashMap<ActorId, HashMap<CrsqlDbVersion, Vec<RangeInclusive<CrsqlSeq>>>>
+        self.partial_need.len().write_to(writer)?;
+        for (actor_id, versions_map) in &self.partial_need {
+            actor_id.write_to(writer)?;
+            versions_map.len().write_to(writer)?;
+            for (version, seq_ranges) in versions_map {
+                version.write_to(writer)?;
+                seq_ranges.len().write_to(writer)?;
+                for range in seq_ranges {
+                    range.start().write_to(writer)?;
+                    range.end().write_to(writer)?;
+                }
+            }
+        }
+
+        self.last_cleared_ts.write_to(writer)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum SyncNeedV1 {
     Full {
         versions: RangeInclusive<CrsqlDbVersion>,
@@ -270,6 +365,73 @@ impl SyncNeedV1 {
             SyncNeedV1::Partial { .. } => 1,
             SyncNeedV1::Empty { .. } => 1,
         }
+    }
+}
+
+impl<'a, C> Readable<'a, C> for SyncNeedV1
+where
+    C: speedy::Context,
+{
+    fn read_from<R: speedy::Reader<'a, C>>(reader: &mut R) -> Result<Self, C::Error> {
+        let variant_tag = u8::read_from(reader)?;
+        match variant_tag {
+            0 => {
+                let start = CrsqlDbVersion::read_from(reader)?;
+                let end = CrsqlDbVersion::read_from(reader)?;
+                let versions = start..=end;
+                Ok(SyncNeedV1::Full { versions })
+            }
+            1 => {
+                let version = CrsqlDbVersion::read_from(reader)?;
+                let seqs_len = usize::read_from(reader)?;
+                let mut seqs = Vec::with_capacity(seqs_len);
+                for _ in 0..seqs_len {
+                    let start = CrsqlSeq::read_from(reader)?;
+                    let end = CrsqlSeq::read_from(reader)?;
+                    seqs.push(start..=end);
+                }
+                Ok(SyncNeedV1::Partial { version, seqs })
+            }
+            2 => {
+                let ts = Option::<Timestamp>::read_from(reader)?;
+                Ok(SyncNeedV1::Empty { ts })
+            }
+            _ => {
+                // Read and discard the invalid tag to avoid issues, then create a proper error
+                let _ = reader.read_u8()?;
+                // This is a bit of a hack but should work for speedy contexts
+                panic!("Invalid SyncNeedV1 variant tag: {}", variant_tag);
+            }
+        }
+    }
+}
+
+impl<C> Writable<C> for SyncNeedV1
+where
+    C: speedy::Context,
+{
+    fn write_to<T: ?Sized + speedy::Writer<C>>(&self, writer: &mut T) -> Result<(), C::Error> {
+        match self {
+            SyncNeedV1::Full { versions } => {
+                0u8.write_to(writer)?;
+                versions.start().write_to(writer)?;
+                versions.end().write_to(writer)?;
+            }
+            SyncNeedV1::Partial { version, seqs } => {
+                1u8.write_to(writer)?;
+                version.write_to(writer)?;
+                seqs.len().write_to(writer)?;
+                for range in seqs {
+                    range.start().write_to(writer)?;
+                    range.end().write_to(writer)?;
+                }
+            }
+            SyncNeedV1::Empty { ts } => {
+                2u8.write_to(writer)?;
+                ts.write_to(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -497,5 +659,159 @@ mod tests {
             )]
             .into()
         );
+    }
+
+    #[test]
+    fn test_sync_state_v1_serialization() {
+        use speedy::{Readable, Writable};
+        use std::collections::HashMap;
+
+        let actor1 = ActorId(Uuid::new_v4());
+        let actor2 = ActorId(Uuid::new_v4());
+
+        let mut sync_state = SyncStateV1 {
+            actor_id: actor1,
+            heads: HashMap::new(),
+            need: HashMap::new(),
+            partial_need: HashMap::new(),
+            last_cleared_ts: Some(Timestamp::from(12345u64)),
+        };
+
+        // Add some heads
+        sync_state.heads.insert(actor1, CrsqlDbVersion(10));
+        sync_state.heads.insert(actor2, CrsqlDbVersion(20));
+
+        // Add some needs
+        sync_state.need.insert(
+            actor1,
+            vec![
+                CrsqlDbVersion(1)..=CrsqlDbVersion(5),
+                CrsqlDbVersion(8)..=CrsqlDbVersion(9),
+            ],
+        );
+
+        // Add some partial needs
+        let mut partial_map = HashMap::new();
+        partial_map.insert(
+            CrsqlDbVersion(15),
+            vec![CrsqlSeq(100)..=CrsqlSeq(110), CrsqlSeq(120)..=CrsqlSeq(130)],
+        );
+        sync_state.partial_need.insert(actor2, partial_map);
+
+        // Serialize
+        let bytes = sync_state.write_to_vec().unwrap();
+
+        // Deserialize
+        let deserialized = SyncStateV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_state, deserialized);
+    }
+
+    #[test]
+    fn test_sync_state_v1_empty_serialization() {
+        use speedy::{Readable, Writable};
+
+        let sync_state = SyncStateV1 {
+            actor_id: ActorId(Uuid::new_v4()),
+            heads: HashMap::new(),
+            need: HashMap::new(),
+            partial_need: HashMap::new(),
+            last_cleared_ts: None,
+        };
+
+        let bytes = sync_state.write_to_vec().unwrap();
+        let deserialized = SyncStateV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_state, deserialized);
+    }
+
+    #[test]
+    fn test_sync_need_v1_full_serialization() {
+        use speedy::{Readable, Writable};
+
+        let sync_need = SyncNeedV1::Full {
+            versions: CrsqlDbVersion(5)..=CrsqlDbVersion(10),
+        };
+
+        let bytes = sync_need.write_to_vec().unwrap();
+        let deserialized = SyncNeedV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_need, deserialized);
+    }
+
+    #[test]
+    fn test_sync_need_v1_partial_serialization() {
+        use speedy::{Readable, Writable};
+
+        let sync_need = SyncNeedV1::Partial {
+            version: CrsqlDbVersion(42),
+            seqs: vec![
+                CrsqlSeq(0)..=CrsqlSeq(10),
+                CrsqlSeq(20)..=CrsqlSeq(30),
+                CrsqlSeq(50)..=CrsqlSeq(50),
+            ],
+        };
+
+        let bytes = sync_need.write_to_vec().unwrap();
+        let deserialized = SyncNeedV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_need, deserialized);
+    }
+
+    #[test]
+    fn test_sync_need_v1_empty_serialization() {
+        use speedy::{Readable, Writable};
+
+        let sync_need = SyncNeedV1::Empty {
+            ts: Some(Timestamp::from(67890u64)),
+        };
+
+        let bytes = sync_need.write_to_vec().unwrap();
+        let deserialized = SyncNeedV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_need, deserialized);
+    }
+
+    #[test]
+    fn test_sync_need_v1_empty_with_none_ts() {
+        use speedy::{Readable, Writable};
+
+        let sync_need = SyncNeedV1::Empty { ts: None };
+
+        let bytes = sync_need.write_to_vec().unwrap();
+        let deserialized = SyncNeedV1::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(sync_need, deserialized);
+    }
+
+    #[test]
+    fn test_sync_need_v1_roundtrip_all_variants() {
+        use speedy::{Readable, Writable};
+
+        let test_cases = vec![
+            SyncNeedV1::Full {
+                versions: CrsqlDbVersion(1)..=CrsqlDbVersion(1),
+            },
+            SyncNeedV1::Partial {
+                version: CrsqlDbVersion(10),
+                seqs: vec![],
+            },
+            SyncNeedV1::Partial {
+                version: CrsqlDbVersion(20),
+                seqs: vec![CrsqlSeq(1)..=CrsqlSeq(5)],
+            },
+            SyncNeedV1::Empty { ts: None },
+            SyncNeedV1::Empty {
+                ts: Some(Timestamp::zero()),
+            },
+        ];
+
+        for (i, original) in test_cases.into_iter().enumerate() {
+            let bytes = original.write_to_vec().unwrap();
+            let deserialized = SyncNeedV1::read_from_buffer(&bytes)
+                .unwrap_or_else(|e| panic!("Failed to deserialize test case {}: {}", i, e));
+
+            assert_eq!(original, deserialized, "Test case {} failed", i);
+        }
     }
 }

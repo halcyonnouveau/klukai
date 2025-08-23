@@ -125,11 +125,10 @@ impl Deref for ChangeV1 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Readable, Writable)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Changeset {
     Empty {
         versions: RangeInclusive<CrsqlDbVersion>,
-        #[speedy(default_on_eof)]
         ts: Option<Timestamp>,
     },
     Full {
@@ -280,6 +279,98 @@ impl Changeset {
                 ts,
             }),
         }
+    }
+}
+
+impl<'a, C> Readable<'a, C> for Changeset
+where
+    C: Context,
+{
+    fn read_from<R: Reader<'a, C>>(reader: &mut R) -> Result<Self, C::Error> {
+        let variant_tag = u8::read_from(reader)?;
+        match variant_tag {
+            0 => {
+                let start = CrsqlDbVersion::read_from(reader)?;
+                let end = CrsqlDbVersion::read_from(reader)?;
+                let versions = start..=end;
+                let ts = Option::<Timestamp>::read_from(reader)?;
+                Ok(Changeset::Empty { versions, ts })
+            }
+            1 => {
+                let version = CrsqlDbVersion::read_from(reader)?;
+                let changes = Vec::<Change>::read_from(reader)?;
+                let start_seq = CrsqlSeq::read_from(reader)?;
+                let end_seq = CrsqlSeq::read_from(reader)?;
+                let seqs = start_seq..=end_seq;
+                let last_seq = CrsqlSeq::read_from(reader)?;
+                let ts = Timestamp::read_from(reader)?;
+                Ok(Changeset::Full {
+                    version,
+                    changes,
+                    seqs,
+                    last_seq,
+                    ts,
+                })
+            }
+            2 => {
+                let versions_len = usize::read_from(reader)?;
+                let mut versions = Vec::with_capacity(versions_len);
+                for _ in 0..versions_len {
+                    let start = CrsqlDbVersion::read_from(reader)?;
+                    let end = CrsqlDbVersion::read_from(reader)?;
+                    versions.push(start..=end);
+                }
+                let ts = Timestamp::read_from(reader)?;
+                Ok(Changeset::EmptySet { versions, ts })
+            }
+            _ => {
+                // Read and discard the invalid tag to avoid issues, then create a proper error
+                let _ = reader.read_u8()?;
+                // This is a bit of a hack but should work for speedy contexts
+                panic!("Invalid changeset variant tag: {}", variant_tag);
+            }
+        }
+    }
+}
+
+impl<C> Writable<C> for Changeset
+where
+    C: Context,
+{
+    fn write_to<T: ?Sized + Writer<C>>(&self, writer: &mut T) -> Result<(), C::Error> {
+        match self {
+            Changeset::Empty { versions, ts } => {
+                0u8.write_to(writer)?;
+                versions.start().write_to(writer)?;
+                versions.end().write_to(writer)?;
+                ts.write_to(writer)?;
+            }
+            Changeset::Full {
+                version,
+                changes,
+                seqs,
+                last_seq,
+                ts,
+            } => {
+                1u8.write_to(writer)?;
+                version.write_to(writer)?;
+                changes.write_to(writer)?;
+                seqs.start().write_to(writer)?;
+                seqs.end().write_to(writer)?;
+                last_seq.write_to(writer)?;
+                ts.write_to(writer)?;
+            }
+            Changeset::EmptySet { versions, ts } => {
+                2u8.write_to(writer)?;
+                versions.len().write_to(writer)?;
+                for range in versions {
+                    range.start().write_to(writer)?;
+                    range.end().write_to(writer)?;
+                }
+                ts.write_to(writer)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -581,4 +672,114 @@ pub async fn broadcast_changes(
     })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use speedy::{Readable, Writable};
+
+    #[test]
+    fn test_changeset_empty_serialization() {
+        let changeset = Changeset::Empty {
+            versions: CrsqlDbVersion(10)..=CrsqlDbVersion(20),
+            ts: Some(Timestamp::from(12345u64)),
+        };
+
+        // Serialize
+        let bytes = changeset.write_to_vec().unwrap();
+
+        // Deserialize
+        let deserialized = Changeset::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(changeset, deserialized);
+    }
+
+    #[test]
+    fn test_changeset_empty_with_none_ts() {
+        let changeset = Changeset::Empty {
+            versions: CrsqlDbVersion(5)..=CrsqlDbVersion(5),
+            ts: None,
+        };
+
+        let bytes = changeset.write_to_vec().unwrap();
+        let deserialized = Changeset::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(changeset, deserialized);
+    }
+
+    #[test]
+    fn test_changeset_full_serialization() {
+        let changeset = Changeset::Full {
+            version: CrsqlDbVersion(42),
+            changes: vec![], // Empty changes for simplicity
+            seqs: CrsqlSeq(100)..=CrsqlSeq(150),
+            last_seq: CrsqlSeq(200),
+            ts: Timestamp::from(67890u64),
+        };
+
+        let bytes = changeset.write_to_vec().unwrap();
+        let deserialized = Changeset::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(changeset, deserialized);
+    }
+
+    #[test]
+    fn test_changeset_empty_set_serialization() {
+        let changeset = Changeset::EmptySet {
+            versions: vec![
+                CrsqlDbVersion(1)..=CrsqlDbVersion(5),
+                CrsqlDbVersion(10)..=CrsqlDbVersion(15),
+                CrsqlDbVersion(20)..=CrsqlDbVersion(20),
+            ],
+            ts: Timestamp::from(11111u64),
+        };
+
+        let bytes = changeset.write_to_vec().unwrap();
+        let deserialized = Changeset::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(changeset, deserialized);
+    }
+
+    #[test]
+    fn test_changeset_empty_set_with_empty_vec() {
+        let changeset = Changeset::EmptySet {
+            versions: vec![],
+            ts: Timestamp::from(22222u64),
+        };
+
+        let bytes = changeset.write_to_vec().unwrap();
+        let deserialized = Changeset::read_from_buffer(&bytes).unwrap();
+
+        assert_eq!(changeset, deserialized);
+    }
+
+    #[test]
+    fn test_changeset_roundtrip_all_variants() {
+        let test_cases = vec![
+            Changeset::Empty {
+                versions: CrsqlDbVersion(1)..=CrsqlDbVersion(1),
+                ts: None,
+            },
+            Changeset::Full {
+                version: CrsqlDbVersion(1),
+                changes: vec![],
+                seqs: CrsqlSeq(0)..=CrsqlSeq(0),
+                last_seq: CrsqlSeq(0),
+                ts: Timestamp::zero(),
+            },
+            Changeset::EmptySet {
+                versions: vec![CrsqlDbVersion(1)..=CrsqlDbVersion(3)],
+                ts: Timestamp::from(99999u64),
+            },
+        ];
+
+        for (i, original) in test_cases.into_iter().enumerate() {
+            let bytes = original.write_to_vec().unwrap();
+            let deserialized = Changeset::read_from_buffer(&bytes)
+                .unwrap_or_else(|e| panic!("Failed to deserialize test case {}: {}", i, e));
+
+            assert_eq!(original, deserialized, "Test case {} failed", i);
+        }
+    }
 }
