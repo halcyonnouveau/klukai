@@ -774,7 +774,7 @@ mod tests {
             axum::extract::Query(TimeoutParams { timeout: None }),
             axum::Json(vec![Statement::WithParams(
                 "insert into tests (id, text) values (?,?)".into(),
-                vec!["service-id".into(), "service-name".into()],
+                vec![1i64.into(), "service-name".into()],
             )]),
         )
         .await;
@@ -813,7 +813,7 @@ mod tests {
             axum::extract::Query(TimeoutParams { timeout: None }),
             axum::Json(vec![Statement::WithParams(
                 "update tests SET text = ? where id = ?".into(),
-                vec!["service-name".into(), "service-id".into()],
+                vec!["service-name".into(), 1i64.into()],
             )]),
         )
         .await;
@@ -862,11 +862,11 @@ mod tests {
             axum::Json(vec![
                 Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id".into(), "service-name".into()],
+                    vec![1i64.into(), "service-name".into()],
                 ),
                 Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-2".into(), "service-name-2".into()],
+                    vec![2i64.into(), "service-name-2".into()],
                 ),
             ]),
         )
@@ -923,7 +923,7 @@ mod tests {
 
         assert_eq!(
             row,
-            QueryEvent::Row(RowId(1), vec!["service-id".into(), "service-name".into()])
+            QueryEvent::Row(RowId(1), vec![1i64.into(), "service-name".into()])
         );
 
         if let Some(frame) = body.frame().await
@@ -941,7 +941,7 @@ mod tests {
             row,
             QueryEvent::Row(
                 RowId(2),
-                vec!["service-id-2".into(), "service-name-2".into()]
+                vec![2i64.into(), "service-name-2".into()]
             )
         );
 

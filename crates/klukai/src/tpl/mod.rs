@@ -722,11 +722,11 @@ mod tests {
                 &[
                     Statement::WithParams(
                         "insert into tests (id, text) values (?,?)".into(),
-                        vec!["service-id".into(), "service-name".into()],
+                        vec![1i64.into(), "service-name".into()],
                     ),
                     Statement::WithParams(
                         "insert into tests (id, text) values (?,?)".into(),
-                        vec!["service-id-2".into(), "service-name-2".into()],
+                        vec![2i64.into(), "service-name-2".into()],
                     ),
                 ],
                 None,
@@ -772,7 +772,7 @@ mod tests {
                 .execute(
                     &[Statement::WithParams(
                         "insert into tests (id, text) values (?,?)".into(),
-                        vec!["service-id-3".into(), "service-name-3".into()],
+                        vec![3i64.into(), "service-name-3".into()],
                     )],
                     None,
                 )

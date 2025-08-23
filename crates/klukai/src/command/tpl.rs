@@ -244,15 +244,11 @@ fn async_watcher() -> notify::Result<(Debouncer<RecommendedWatcher>, Receiver<De
 
     // Automatically select the best implementation for your platform.
     // You can also access each implementation directly e.g. INotifySubscriptioner.
-    let debouncer = new_debouncer(
-        Duration::from_secs(1),
-        None,
-        move |res: DebounceEventResult| {
-            if let Err(e) = tx.blocking_send(res) {
-                error!("could not send file change notifications! {e}");
-            }
-        },
-    )?;
+    let debouncer = new_debouncer(Duration::from_secs(1), move |res: DebounceEventResult| {
+        if let Err(e) = tx.blocking_send(res) {
+            error!("could not send file change notifications! {e}");
+        }
+    })?;
 
     Ok((debouncer, rx))
 }

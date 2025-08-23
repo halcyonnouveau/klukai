@@ -10,82 +10,49 @@ repository = "https://github.com/halcyonnouveau/klukai"
 homepage = "https://github.com/halcyonnouveau/klukai"
 
 [workspace.dependencies]
-klukai-types = { version = "0.1.0", path = "crates/klukai-types" }
-klukai-client = { version = "0.1.0", path = "crates/klukai-client" }
+# Workspace crates
 klukai-agent = { version = "0.1.0", path = "crates/klukai-agent" }
+klukai-client = { version = "0.1.0", path = "crates/klukai-client" }
 klukai-tests = { path = "crates/klukai-tests" }
+klukai-types = { version = "0.1.0", path = "crates/klukai-types" }
 
-arc-swap = "1.7"
-antithesis_sdk = { version = "0.2", default-features = false }
-assert2 = "0.3"
-async-trait = "0.1"
+# Async runtime and utilities
+futures = "0.3"
+futures-util = "0.3"
+tokio = { version = "1.41", features = ["full"] }
+tokio-metrics = "0.4"
+tokio-serde = { version = "0.8", features = ["json"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-util = { version = "0.7", features = ["io", "codec", "net"] }
+
+# Web framework and HTTP
 axum = { version = "0.8", features = ["http2", "ws", "tracing"] }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 headers = "0.4"
-deadpool = "0.10.0"
-deadpool-sqlite = "0.6.0"
-bincode = "2.0"
-build-info = "0.0.41"
-build-info-build = "0.0.41"
-bytes = "1.10"
-camino = { version = "1.1", features = ["serde1"] }
-circular-buffer = "0.1.5"
-clap = { version = "4.2.4", features = ["derive"] }
-compact_str = { version = "0.7.0", "features" = ["serde"] }
-config = { version = "0.13.3", default-features = false, features = ["toml"] }
-crc32fast = "1.5"
-csv = "1.3"
-enquote = "1.1"
-eyre = "0.6"
-fallible-iterator = "0.3"
+http = "1.3"
+http-body = "1.0"
+http-body-util = "0.1"
+hyper = { version = "1.7", features = ["http1", "http2", "server", "client"] }
+hyper-rustls = { version = "0.27", features = ["http2"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy"] }
+tower = { version = "0.5", features = ["limit", "load-shed", "buffer"] }
+tower-http = { version = "0.6", features = ["trace", "auth"] }
+
+# Networking and protocols
 foca = { version = "0.19", features = [
     "std",
     "tracing",
     "bincode-codec",
     "serde",
 ] }
-futures = "0.3.28"
-futures-util = "0.3.28"
-hex = "0.4.3"
-hostname = "0.3.1"
-http-body = "0.4.5"
-http-body-util = "0.1.2"
-hyper = { version = "1.7", features = ["http1", "http2", "server", "client"] }
-hyper-rustls = { version = "0.27", features = ["http2"] }
-hyper-util = { version = "0.1", features = ["client", "client-legacy"] }
-indexmap = { version = "2.1.0", features = ["serde"] }
-itertools = { version = "0.10.5" }
-metrics = "0.22.0"
-metrics-exporter-prometheus = { version = "0.13.0", default-features = false, features = [
-    "http-listener",
-] }
-metrics-util = { version = "0.16.0" }
-nix = { version = "0.30", features = ["fs"] }
-nom = "7.0"
-notify = { version = "6.0.1", default-features = false, features = [
-    "macos_kqueue",
-] }
-notify-debouncer-mini = { version = "0.3.0", default-features = false }
-once_cell = "1.21"
-opentelemetry = { version = "0.30", features = ["trace", "metrics", "logs"] }
-opentelemetry_sdk = { version = "0.30", features = ["rt-tokio", "trace"] }
-opentelemetry-otlp = { version = "0.30", features = ["grpc-tonic", "trace"] }
-opentelemetry-semantic-conventions = "0.30"
-parking_lot = { version = "0.12.1" }
-pin-project-lite = "0.2.9"
+governor = "0.10"
+hickory-resolver = "0.25"
 quinn = "0.11"
 quinn-proto = "0.11"
-quoted-string = "0.6"
-rand = { version = "0.9", features = ["small_rng"] }
-rangemap = { version = "1.5.1", features = ["serde1"] }
-rcgen = { version = "0.14", features = [
-    "x509-parser",
-    "aws_lc_rs",
-    "crypto",
-    "pem",
-], default-features = false }
-rhai = { version = "1.22", features = ["sync"] }
-rhai-tpl = { version = "0.1" }
+
+# Database
+deadpool = "0.12"
+deadpool-sqlite = "0.12"
 rusqlite = { version = "0.37", features = [
     "serde_json",
     "time",
@@ -100,42 +67,102 @@ rusqlite = { version = "0.37", features = [
     "series",
     "trace",
 ] }
+sqlite3-parser = "0.15"
+
+# Cryptography and security
+rcgen = { version = "0.14", features = [
+    "x509-parser",
+    "aws_lc_rs",
+    "crypto",
+    "pem",
+], default-features = false }
 rustls = "0.23"
-rustls-pki-types = "1.12"
 rustls-pemfile = "2.2"
-seahash = "4.1"
+rustls-pki-types = "1.12"
+webpki = { version = "0.22", features = ["std"] }
+
+# Serialization
+bincode = "2.0"
 serde = "1.0"
 serde_json = { version = "1.0", features = ["raw_value"] }
-serde_with = "2.3.2"
-shell-words = "1.1"
-shellwords = "1.1"
-smallvec = { version = "1.15", features = ["serde", "write", "union"] }
+serde_with = "3.14"
 speedy = { version = "0.8", features = ["uuid", "smallvec", "indexmap"] }
-sqlite3-parser = "0.12.0"
-strum = { version = "0.24.1", features = ["derive"] }
-tempfile = "3.5.0"
-thiserror = "1.0.40"
-tikv-jemallocator = "0.5"
-time = { version = "0.3.15", features = ["macros", "serde-well-known"] }
-tokio = { version = "1.41", features = ["full"] }
-tokio-metrics = "0.3.0"
-tokio-serde = { version = "0.8", features = ["json"] }
-tokio-stream = { version = "0.1.12", features = ["sync"] }
-tokio-util = { version = "0.7.7", features = ["io", "codec", "net"] }
-tower = { version = "0.5", features = ["limit", "load-shed", "buffer"] }
-tower-http = { version = "0.6", features = ["trace", "auth"] }
+
+# Observability and tracing
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.17", default-features = false, features = [
+    "http-listener",
+] }
+metrics-util = "0.20"
+opentelemetry = { version = "0.30", features = ["trace", "metrics", "logs"] }
+opentelemetry-otlp = { version = "0.30", features = ["grpc-tonic", "trace"] }
+opentelemetry-semantic-conventions = "0.30"
+opentelemetry_sdk = { version = "0.30", features = ["rt-tokio", "trace"] }
 tracing = "0.1"
 tracing-filter = { version = "0.1.0-alpha.2", features = ["smallvec"] }
 tracing-opentelemetry = { version = "0.31", default-features = false, features = [
     "tracing-log",
 ] }
-tracing-subscriber = { version = "0.3.16", features = ["json", "env-filter"] }
-hickory-resolver = "0.24"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Data structures and utilities
+arc-swap = "1.7"
+bytes = "1.10"
+camino = { version = "1.1", features = ["serde1"] }
+circular-buffer = "1.1"
+compact_str = { version = "0.9", "features" = ["serde"] }
+crc32fast = "1.5"
+fallible-iterator = "0.3"
+hex = "0.4"
+indexmap = { version = "2.11", features = ["serde"] }
+itertools = "0.14"
+once_cell = "1.21"
+parking_lot = "0.12"
+pin-project-lite = "0.2"
+rand = { version = "0.9", features = ["small_rng"] }
+rangemap = { version = "1.6", features = ["serde1"] }
+seahash = "4.1"
+smallvec = { version = "1.15", features = ["serde", "write", "union"] }
+time = { version = "0.3", features = ["macros", "serde-well-known"] }
 uhlc = { version = "0.7", features = ["defmt"] }
-uuid = { version = "1.3.1", features = ["v4", "serde"] }
-webpki = { version = "0.22.0", features = ["std"] }
-http = { version = "1.3" }
-governor = { version = "0.7.0" }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+# CLI and configuration
+clap = { version = "4.5", features = ["derive"] }
+config = { version = "0.15", default-features = false, features = ["toml"] }
+enquote = "1.1"
+hostname = "0.4"
+shell-words = "1.1"
+shellwords = "1.1"
+strum = { version = "0.27", features = ["derive"] }
+
+# File I/O and system
+csv = "1.3"
+nix = { version = "0.30", features = ["fs"] }
+notify = { version = "8.2", default-features = false, features = [
+    "macos_kqueue",
+] }
+notify-debouncer-mini = { version = "0.7", default-features = false }
+tempfile = "3.21"
+
+# Error handling and parsing
+eyre = "0.6"
+nom = "7.0"
+quoted-string = "0.6"
+thiserror = "2.0"
+
+# Memory allocation and build tools
+build-info = "0.0.41"
+build-info-build = "0.0.41"
+tikv-jemallocator = "0.6"
+
+# Scripting
+rhai = { version = "1.22", features = ["sync"] }
+rhai-tpl = { version = "0.1" }
+
+# Testing and development
+antithesis_sdk = { version = "0.2", default-features = false }
+assert2 = "0.3"
 
 [profile.release]
 debug = 1

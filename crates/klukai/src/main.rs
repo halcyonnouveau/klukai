@@ -24,10 +24,7 @@ use klukai_types::{
 use once_cell::sync::OnceCell;
 use opentelemetry::{KeyValue, global, trace::TracerProvider};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{
-    Resource,
-    propagation::TraceContextPropagator,
-};
+use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator};
 use rusqlite::{Connection, OptionalExtension};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{
@@ -69,36 +66,38 @@ fn init_tracing(cli: &Cli) -> Result<Option<admin::TracingHandle>, ConfigError> 
         let sub = tracing_subscriber::registry::Registry::default().with(env_filter);
 
         if let Some(otel) = &config.telemetry.open_telemetry {
-            let mut tonic_builder = opentelemetry_otlp::SpanExporter::builder()
-                .with_tonic();
-            
+            let mut tonic_builder = opentelemetry_otlp::SpanExporter::builder().with_tonic();
+
             if let OtelConfig::Exporter { endpoint } = otel {
                 tonic_builder = tonic_builder.with_endpoint(endpoint.clone());
             }
-            
-            let otlp_exporter = tonic_builder.build()
+
+            let otlp_exporter = tonic_builder
+                .build()
                 .expect("Failed to build OTLP exporter");
 
-            let resource = Resource::builder().with_attributes([
-                KeyValue::new(
-                    opentelemetry_semantic_conventions::attribute::SERVICE_NAME,
-                    "corrosion",
-                ),
-                KeyValue::new(
-                    opentelemetry_semantic_conventions::attribute::SERVICE_VERSION,
-                    VERSION,
-                ),
-                KeyValue::new(
-                    "host.name",
-                    hostname::get().unwrap().to_string_lossy().into_owned(),
-                ),
-            ]).build();
+            let resource = Resource::builder()
+                .with_attributes([
+                    KeyValue::new(
+                        opentelemetry_semantic_conventions::attribute::SERVICE_NAME,
+                        "corrosion",
+                    ),
+                    KeyValue::new(
+                        opentelemetry_semantic_conventions::attribute::SERVICE_VERSION,
+                        VERSION,
+                    ),
+                    KeyValue::new(
+                        "host.name",
+                        hostname::get().unwrap().to_string_lossy().into_owned(),
+                    ),
+                ])
+                .build();
 
             let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
                 .with_resource(resource)
                 .with_batch_exporter(otlp_exporter)
                 .build();
-            
+
             let tracer = tracer_provider.tracer("corrosion");
             global::set_tracer_provider(tracer_provider);
 

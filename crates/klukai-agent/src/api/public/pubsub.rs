@@ -1030,11 +1030,11 @@ mod tests {
             axum::Json(vec![
                 Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id".into(), "service-name".into()],
+                    vec![1i64.into(), "service-name".into()],
                 ),
                 Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-2".into(), "service-name-2".into()],
+                    vec![2i64.into(), "service-name-2".into()],
                 ),
             ]),
         )
@@ -1091,7 +1091,7 @@ mod tests {
                 axum::extract::Query(TimeoutParams { timeout: None }),
                 axum::Json(vec![Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-3".into(), "service-name-3".into()],
+                    vec![3i64.into(), "service-name-3".into()],
                 )]),
             )
             .await;
@@ -1119,14 +1119,14 @@ mod tests {
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(RowId(1), vec!["service-id".into(), "service-name".into()])
+                QueryEvent::Row(RowId(1), vec![1i64.into(), "service-name".into()])
             );
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
                 QueryEvent::Row(
                     RowId(2),
-                    vec!["service-id-2".into(), "service-name-2".into()]
+                    vec![2i64.into(), "service-name-2".into()]
                 )
             );
 
@@ -1138,7 +1138,7 @@ mod tests {
                 QueryEvent::Change(
                     ChangeType::Insert,
                     RowId(3),
-                    vec!["service-id-3".into(), "service-name-3".into()],
+                    vec![3i64.into(), "service-name-3".into()],
                     ChangeId(1)
                 )
             );
@@ -1148,7 +1148,7 @@ mod tests {
                 axum::extract::Query(TimeoutParams { timeout: None }),
                 axum::Json(vec![Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-4".into(), "service-name-4".into()],
+                    vec![4i64.into(), "service-name-4".into()],
                 )]),
             )
             .await;
@@ -1160,19 +1160,19 @@ mod tests {
                 QueryEvent::Change(
                     ChangeType::Insert,
                     RowId(4),
-                    vec!["service-id-4".into(), "service-name-4".into()],
+                    vec![4i64.into(), "service-name-4".into()],
                     ChangeId(2)
                 )
             );
 
             assert_eq!(
                 notify_rows.recv::<NotifyEvent>().await.unwrap().unwrap(),
-                NotifyEvent::Notify(ChangeType::Update, vec!["service-id-3".into()],)
+                NotifyEvent::Notify(ChangeType::Update, vec![3i64.into()],)
             );
 
             assert_eq!(
                 notify_rows.recv::<NotifyEvent>().await.unwrap().unwrap(),
-                NotifyEvent::Notify(ChangeType::Update, vec!["service-id-4".into()],)
+                NotifyEvent::Notify(ChangeType::Update, vec![4i64.into()],)
             );
 
             let mut res = api_v1_subs(
@@ -1207,7 +1207,7 @@ mod tests {
                 QueryEvent::Change(
                     ChangeType::Insert,
                     RowId(4),
-                    vec!["service-id-4".into(), "service-name-4".into()],
+                    vec![4i64.into(), "service-name-4".into()],
                     ChangeId(2)
                 )
             );
@@ -1241,7 +1241,7 @@ mod tests {
                 axum::extract::Query(TimeoutParams { timeout: None }),
                 axum::Json(vec![Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-5".into(), "service-name-5".into()],
+                    vec![5i64.into(), "service-name-5".into()],
                 )]),
             )
             .await;
@@ -1251,7 +1251,7 @@ mod tests {
             let query_evt = QueryEvent::Change(
                 ChangeType::Insert,
                 RowId(5),
-                vec!["service-id-5".into(), "service-name-5".into()],
+                vec![5i64.into(), "service-name-5".into()],
                 ChangeId(3),
             );
 
@@ -1262,7 +1262,7 @@ mod tests {
                 query_evt
             );
 
-            let notify_evt = NotifyEvent::Notify(ChangeType::Update, vec!["service-id-5".into()]);
+            let notify_evt = NotifyEvent::Notify(ChangeType::Update, vec![5i64.into()]);
 
             assert_eq!(
                 notify_rows.recv::<NotifyEvent>().await.unwrap().unwrap(),
@@ -1307,14 +1307,14 @@ mod tests {
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
-                QueryEvent::Row(RowId(1), vec!["service-id".into(), "service-name".into()])
+                QueryEvent::Row(RowId(1), vec![1i64.into(), "service-name".into()])
             );
 
             assert_eq!(
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
                 QueryEvent::Row(
                     RowId(2),
-                    vec!["service-id-2".into(), "service-name-2".into()]
+                    vec![2i64.into(), "service-name-2".into()]
                 )
             );
 
@@ -1322,7 +1322,7 @@ mod tests {
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
                 QueryEvent::Row(
                     RowId(3),
-                    vec!["service-id-3".into(), "service-name-3".into()],
+                    vec![3i64.into(), "service-name-3".into()],
                 )
             );
 
@@ -1330,7 +1330,7 @@ mod tests {
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
                 QueryEvent::Row(
                     RowId(4),
-                    vec!["service-id-4".into(), "service-name-4".into()],
+                    vec![4i64.into(), "service-name-4".into()],
                 )
             );
 
@@ -1338,7 +1338,7 @@ mod tests {
                 rows.recv::<QueryEvent>().await.unwrap().unwrap(),
                 QueryEvent::Row(
                     RowId(5),
-                    vec!["service-id-5".into(), "service-name-5".into()]
+                    vec![5i64.into(), "service-name-5".into()]
                 )
             );
 
@@ -1347,7 +1347,7 @@ mod tests {
                 axum::extract::Query(TimeoutParams { timeout: None }),
                 axum::Json(vec![Statement::WithParams(
                     "insert into tests (id, text) values (?,?)".into(),
-                    vec!["service-id-6".into(), "service-name-6".into()],
+                    vec![6i64.into(), "service-name-6".into()],
                 )]),
             )
             .await;
@@ -1359,7 +1359,7 @@ mod tests {
                 axum::extract::Query(TimeoutParams { timeout: None }),
                 axum::Json(vec![Statement::WithParams(
                     "delete from  tests where id = ?".into(),
-                    vec!["service-id-6".into()],
+                    vec![6i64.into()],
                 )]),
             )
             .await;
@@ -1370,14 +1370,14 @@ mod tests {
             // the newer event might get sent first (but in that case, the older one should be dropped)
             match notify_rows.recv::<NotifyEvent>().await.unwrap().unwrap() {
                 NotifyEvent::Notify(ChangeType::Update, pk) => {
-                    assert_eq!(pk, vec!["service-id-6".into()]);
+                    assert_eq!(pk, vec![6i64.into()]);
                     assert_eq!(
                         notify_rows.recv::<NotifyEvent>().await.unwrap().unwrap(),
-                        NotifyEvent::Notify(ChangeType::Delete, vec!["service-id-6".into()],)
+                        NotifyEvent::Notify(ChangeType::Delete, vec![6i64.into()],)
                     );
                 }
                 NotifyEvent::Notify(ChangeType::Delete, pk) => {
-                    assert_eq!(pk, vec!["service-id-6".into()]);
+                    assert_eq!(pk, vec![6i64.into()]);
                     // check that we dont get an update after
                     assert!(
                         tokio::time::timeout(
@@ -1426,7 +1426,7 @@ mod tests {
             QueryEvent::Change(
                 ChangeType::Insert,
                 RowId(4),
-                vec!["service-id-4".into(), "service-name-4".into()],
+                vec![4i64.into(), "service-name-4".into()],
                 ChangeId(2)
             )
         );
@@ -1436,7 +1436,7 @@ mod tests {
             QueryEvent::Change(
                 ChangeType::Insert,
                 RowId(5),
-                vec!["service-id-5".into(), "service-name-5".into()],
+                vec![5i64.into(), "service-name-5".into()],
                 ChangeId(3),
             )
         );
@@ -1475,7 +1475,7 @@ mod tests {
             axum::extract::Query(TimeoutParams { timeout: None }),
             axum::Json(vec![Statement::WithParams(
                 "insert into tests (id, text) values (?,?)".into(),
-                vec!["service-id-6".into(), "service-name-6".into()],
+                vec![6i64.into(), "service-name-6".into()],
             )]),
         )
         .await;
@@ -1487,7 +1487,7 @@ mod tests {
             QueryEvent::Change(
                 ChangeType::Insert,
                 RowId(6),
-                vec!["service-id-6".into(), "service-name-6".into()],
+                vec![6i64.into(), "service-name-6".into()],
                 ChangeId(4),
             )
         );
@@ -1530,7 +1530,7 @@ mod tests {
             QueryEvent::Change(
                 ChangeType::Insert,
                 RowId(6),
-                vec!["service-id-6".into(), "service-name-6".into()],
+                vec![6i64.into(), "service-name-6".into()],
                 ChangeId(4),
             )
         );

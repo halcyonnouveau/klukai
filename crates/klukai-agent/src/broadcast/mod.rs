@@ -255,7 +255,8 @@ pub fn runtime_loop(
                         }
                         FocaInput::ApplyMany(updates) => {
                             trace!("handling FocaInput::ApplyMany");
-                            if let Err(e) = foca.apply_many(updates.into_iter(), true, &mut runtime) {
+                            if let Err(e) = foca.apply_many(updates.into_iter(), true, &mut runtime)
+                            {
                                 error!("foca apply_many error: {e}");
                             }
                         }

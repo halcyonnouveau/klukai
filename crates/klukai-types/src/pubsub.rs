@@ -11,7 +11,6 @@ use crate::api::{ChangeId, ColumnName, ColumnType, RowId, SqliteValue, SqliteVal
 use crate::spawn::spawn_counted;
 use crate::sqlite_pool::{self, RusqlitePool};
 use crate::tripwire::{Outcome, PreemptibleFutureExt, Tripwire};
-use async_trait::async_trait;
 use bytes::{Buf, BufMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{ToCompactString, format_compact};
@@ -280,7 +279,6 @@ struct InnerMatcherHandle {
 
 pub type MatchCandidates = IndexMap<TableName, IndexMap<Vec<u8>, i64>>;
 
-#[async_trait]
 impl Handle for MatcherHandle {
     fn id(&self) -> Uuid {
         self.inner.id
@@ -294,9 +292,14 @@ impl Handle for MatcherHandle {
         self.inner.changes_tx.clone()
     }
 
-    async fn cleanup(&self) {
-        self.inner.cancel.cancel();
-        info!(sub_id = %self.inner.id, "Canceled subscription");
+    fn cleanup(&self) -> impl std::future::Future<Output = ()> + Send {
+        let cancel = self.inner.cancel.clone();
+        let id = self.inner.id;
+        
+        async move {
+            cancel.cancel();
+            info!(sub_id = %id, "Canceled subscription");
+        }
     }
 
     fn filter_matchable_change(
@@ -635,10 +638,10 @@ impl Matcher {
 
                                         ResultColumn::Expr(
                                             Expr::Qualified(
-                                                Name(tbl_name.clone()),
-                                                Name(pk.clone()),
+                                                Name(tbl_name.clone().into()),
+                                                Name(pk.clone().into()),
                                             ),
-                                            Some(As::As(Name(alias))),
+                                            Some(As::As(Name(alias.into()))),
                                         )
                                     })
                                     .collect::<Vec<_>>()
@@ -673,13 +676,13 @@ impl Matcher {
                 } = &mut select.body.select
             {
                 *where_clause = if let Some(prev) = where_clause.take() {
-                    Some(Expr::Binary(
+                    Some(Box::new(Expr::Binary(
                         Box::new(expr),
                         Operator::And,
-                        Box::new(Expr::parenthesized(prev)),
-                    ))
+                        Box::new(Expr::parenthesized(*prev)),
+                    )))
                 } else {
-                    Some(expr)
+                    Some(Box::new(expr))
                 };
 
                 match from {
@@ -687,17 +690,14 @@ impl Matcher {
                         joins: Some(joins), ..
                     }) if idx > 0 => {
                         // Replace LEFT JOIN with INNER join if the target is the joined table
-                        if let Some(JoinedSelectTable {
-                            operator:
-                                JoinOperator::TypedJoin {
-                                    join_type:
-                                        join_type @ Some(JoinType::LeftOuter | JoinType::Left),
-                                    ..
-                                },
-                            ..
-                        }) = joins.get_mut(idx - 1)
-                        {
-                            *join_type = Some(JoinType::Inner);
+                        if let Some(joined_table) = joins.get_mut(idx - 1) {
+                            if let JoinOperator::TypedJoin(Some(join_type)) = &joined_table.operator
+                            {
+                                if join_type.contains(JoinType::LEFT) {
+                                    joined_table.operator =
+                                        JoinOperator::TypedJoin(Some(JoinType::INNER));
+                                }
+                            }
                         };
 
                         // Remove all custom INDEXED BY clauses for the table as the most efficient
@@ -1750,16 +1750,23 @@ fn extract_select_columns(select: &Select, schema: &Schema) -> Result<ParsedSele
                 let from_table = match &from.select {
                     Some(table) => match table.as_ref() {
                         SelectTable::Table(name, alias, _) => {
-                            if schema.tables.contains_key(name.name.0.as_str()) {
+                            if schema.tables.contains_key(name.name.0.as_ref()) {
                                 if let Some(As::As(alias) | As::Elided(alias)) = alias {
-                                    parsed.aliases.insert(alias.0.clone(), name.name.0.clone());
+                                    parsed
+                                        .aliases
+                                        .insert(alias.0.to_string(), name.name.0.to_string());
                                 } else if let Some(ref alias) = name.alias {
-                                    parsed.aliases.insert(alias.0.clone(), name.name.0.clone());
+                                    parsed
+                                        .aliases
+                                        .insert(alias.0.to_string(), name.name.0.to_string());
                                 }
-                                parsed.table_columns.entry(name.name.0.clone()).or_default();
+                                parsed
+                                    .table_columns
+                                    .entry(name.name.0.to_string())
+                                    .or_default();
                                 Some(&name.name)
                             } else {
-                                return Err(MatcherError::TableNotFound(name.name.0.clone()));
+                                return Err(MatcherError::TableNotFound(name.name.0.to_string()));
                             }
                         }
                         // TODO: add support for:
@@ -1783,11 +1790,18 @@ fn extract_select_columns(select: &Select, schema: &Schema) -> Result<ParsedSele
                         let tbl_name = match &join.table {
                             SelectTable::Table(name, alias, _) => {
                                 if let Some(As::As(alias) | As::Elided(alias)) = alias {
-                                    parsed.aliases.insert(alias.0.clone(), name.name.0.clone());
+                                    parsed
+                                        .aliases
+                                        .insert(alias.0.to_string(), name.name.0.to_string());
                                 } else if let Some(ref alias) = name.alias {
-                                    parsed.aliases.insert(alias.0.clone(), name.name.0.clone());
+                                    parsed
+                                        .aliases
+                                        .insert(alias.0.to_string(), name.name.0.to_string());
                                 }
-                                parsed.table_columns.entry(name.name.0.clone()).or_default();
+                                parsed
+                                    .table_columns
+                                    .entry(name.name.0.to_string())
+                                    .or_default();
                                 &name.name
                             }
                             // TODO: add support for:
@@ -1806,8 +1820,10 @@ fn extract_select_columns(select: &Select, schema: &Schema) -> Result<ParsedSele
                                     extract_expr_columns(expr, schema, &mut parsed)?;
                                 }
                                 JoinConstraint::Using(names) => {
-                                    let entry =
-                                        parsed.table_columns.entry(tbl_name.0.clone()).or_default();
+                                    let entry = parsed
+                                        .table_columns
+                                        .entry(tbl_name.0.to_string())
+                                        .or_default();
                                     for name in names.iter() {
                                         insert_col(entry, schema, &tbl_name.0, &name.0);
                                     }
@@ -1852,12 +1868,16 @@ fn extract_expr_columns(
     match expr {
         // simplest case
         Expr::Qualified(tblname, colname) => {
-            let resolved_name = parsed.aliases.get(&tblname.0).unwrap_or(&tblname.0);
+            let resolved_name = parsed
+                .aliases
+                .get(tblname.0.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or(tblname.0.as_ref());
             // println!("adding column: {resolved_name} => {colname:?}");
             insert_col(
                 parsed
                     .table_columns
-                    .entry(resolved_name.clone())
+                    .entry(resolved_name.to_string())
                     .or_default(),
                 schema,
                 resolved_name,
@@ -1865,13 +1885,19 @@ fn extract_expr_columns(
             );
         }
         // simplest case but also mentioning the schema
-        Expr::DoublyQualified(schema_name, tblname, colname) if schema_name.0 == "main" => {
-            let resolved_name = parsed.aliases.get(&tblname.0).unwrap_or(&tblname.0);
+        Expr::DoublyQualified(schema_name, tblname, colname)
+            if schema_name.0.as_ref() == "main" =>
+        {
+            let resolved_name = parsed
+                .aliases
+                .get(tblname.0.as_ref())
+                .map(|s| s.as_str())
+                .unwrap_or(tblname.0.as_ref());
             // println!("adding column: {resolved_name} => {colname:?}");
             insert_col(
                 parsed
                     .table_columns
-                    .entry(resolved_name.clone())
+                    .entry(resolved_name.to_string())
                     .or_default(),
                 schema,
                 resolved_name,
@@ -1880,7 +1906,7 @@ fn extract_expr_columns(
         }
 
         Expr::Name(colname) => {
-            let check_col_name = unquote(&colname.0).ok().unwrap_or(colname.0.clone());
+            let check_col_name = unquote(&colname.0).ok().unwrap_or(colname.0.to_string());
 
             let mut found = None;
             for tbl in parsed.table_columns.keys() {
@@ -1911,7 +1937,7 @@ fn extract_expr_columns(
         }
 
         Expr::Id(colname) => {
-            let check_col_name = unquote(&colname.0).ok().unwrap_or(colname.0.clone());
+            let check_col_name = unquote(&colname.0).ok().unwrap_or(colname.0.to_string());
 
             let mut found = None;
             for tbl in parsed.table_columns.keys() {
@@ -1939,7 +1965,7 @@ fn extract_expr_columns(
                     return Ok(());
                 }
                 return Err(MatcherError::TableForColumnNotFound {
-                    col_name: colname.0.clone(),
+                    col_name: colname.0.to_string(),
                 });
             }
         }
@@ -2045,25 +2071,25 @@ fn extract_columns(
                 extract_expr_columns(expr, schema, parsed)?;
                 parsed.columns.push(ResultColumn::Expr(
                     expr.clone(),
-                    Some(As::As(Name(format!("col_{i}")))),
+                    Some(As::As(Name(format!("col_{i}").into()))),
                 ));
                 i += 1;
             }
             ResultColumn::Star => {
                 if let Some(tbl_name) = from {
-                    if let Some(table) = schema.tables.get(&tbl_name.0) {
+                    if let Some(table) = schema.tables.get(tbl_name.0.as_ref()) {
                         let entry = parsed.table_columns.entry(table.name.clone()).or_default();
                         for col in table.columns.keys() {
                             entry.insert(col.clone());
                             parsed.columns.push(ResultColumn::Expr(
-                                Expr::Name(Name(col.clone())),
-                                Some(As::As(Name(format!("col_{i}")))),
+                                Expr::Name(Name(col.clone().into())),
+                                Some(As::As(Name(format!("col_{i}").into()))),
                             ));
                             i += 1;
                         }
                     } else {
                         return Err(MatcherError::TableStarNotFound {
-                            tbl_name: tbl_name.0.clone(),
+                            tbl_name: tbl_name.0.to_string(),
                         });
                     }
                 } else {
@@ -2073,21 +2099,22 @@ fn extract_columns(
             ResultColumn::TableStar(tbl_name) => {
                 let name = parsed
                     .aliases
-                    .get(tbl_name.0.as_str())
-                    .unwrap_or(&tbl_name.0);
+                    .get(tbl_name.0.as_ref())
+                    .map(|s| s.as_str())
+                    .unwrap_or(tbl_name.0.as_ref());
                 if let Some(table) = schema.tables.get(name) {
                     let entry = parsed.table_columns.entry(table.name.clone()).or_default();
                     for col in table.columns.keys() {
                         entry.insert(col.clone());
                         parsed.columns.push(ResultColumn::Expr(
-                            Expr::Qualified(tbl_name.clone(), Name(col.clone())),
-                            Some(As::As(Name(format!("col_{i}")))),
+                            Expr::Qualified(tbl_name.clone(), Name(col.clone().into())),
+                            Some(As::As(Name(format!("col_{i}").into()))),
                         ));
                         i += 1;
                     }
                 } else {
                     return Err(MatcherError::TableStarNotFound {
-                        tbl_name: name.clone(),
+                        tbl_name: name.to_string(),
                     });
                 }
             }
@@ -2111,11 +2138,16 @@ fn table_to_expr(
         Expr::Parenthesized(
             tbl.pk
                 .iter()
-                .map(|pk| Expr::Qualified(Name(tbl_name.clone()), Name(pk.to_owned())))
+                .map(|pk| {
+                    Expr::Qualified(Name(tbl_name.clone().into()), Name(pk.to_owned().into()))
+                })
                 .collect(),
         ),
         false,
-        QualifiedName::fullname(Name("__corro_sub".into()), Name(format!("temp_{table}"))),
+        QualifiedName::fullname(
+            Name("__corro_sub".into()),
+            Name(format!("temp_{table}").into()),
+        ),
         None,
     );
 

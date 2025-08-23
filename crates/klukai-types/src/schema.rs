@@ -13,7 +13,7 @@ use rusqlite::{Connection, Transaction};
 use serde::{Deserialize, Serialize};
 use sqlite3_parser::ast::{
     Cmd, ColumnConstraint, ColumnDefinition, CreateTableBody, Expr, Name, NamedTableConstraint,
-    QualifiedName, SortedColumn, Stmt, TableConstraint, TableOptions, ToTokens,
+    QualifiedName, SortedColumn, Stmt, TableConstraint, fmt::ToTokens,
 };
 use tracing::{debug, info, trace};
 
@@ -90,7 +90,7 @@ impl fmt::Display for Table {
         Cmd::Stmt(Stmt::CreateTable {
             temporary: false,
             if_not_exists: false,
-            tbl_name: QualifiedName::single(Name(self.name.clone())),
+            tbl_name: QualifiedName::single(Name(self.name.as_str().into())),
             body: self.raw.clone(),
         })
         .to_fmt(f)
@@ -122,7 +122,7 @@ impl Schema {
             if let CreateTableBody::ColumnsAndConstraints {
                 columns: _,
                 constraints,
-                options: _,
+                ..
             } = &table.raw
             {
                 if let Some(constraints) = constraints {
@@ -324,7 +324,7 @@ pub fn apply_schema(
                 &Cmd::Stmt(Stmt::CreateTable {
                     temporary: false,
                     if_not_exists: false,
-                    tbl_name: QualifiedName::single(Name(name.clone())),
+                    tbl_name: QualifiedName::single(Name(name.to_string().into())),
                     body: table.raw.clone(),
                 })
                 .to_string(),
@@ -387,8 +387,8 @@ pub fn apply_schema(
                     &Cmd::Stmt(Stmt::CreateIndex {
                         unique: false,
                         if_not_exists: false,
-                        idx_name: QualifiedName::single(Name(idx_name.clone())),
-                        tbl_name: Name(index.tbl_name.clone()),
+                        idx_name: QualifiedName::single(Name(idx_name.clone().into())),
+                        tbl_name: Name(index.tbl_name.clone().into()),
                         columns: index.columns.clone(),
                         where_clause: index.where_clause.clone(),
                     })
@@ -561,7 +561,7 @@ pub fn apply_schema(
             let create_tmp_table = Cmd::Stmt(Stmt::CreateTable {
                 temporary: false,
                 if_not_exists: false,
-                tbl_name: QualifiedName::single(Name(tmp_name.clone())),
+                tbl_name: QualifiedName::single(Name(tmp_name.clone().into())),
                 body: new_table.raw.clone(),
             });
 
@@ -614,8 +614,8 @@ pub fn apply_schema(
                 &Cmd::Stmt(Stmt::CreateIndex {
                     unique: false,
                     if_not_exists: false,
-                    idx_name: QualifiedName::single(Name(idx_name.clone())),
-                    tbl_name: Name(index.tbl_name.clone()),
+                    idx_name: QualifiedName::single(Name(idx_name.clone().into())),
+                    tbl_name: Name(index.tbl_name.clone().into()),
                     columns: index.columns.clone(),
                     where_clause: index.where_clause.clone(),
                 })
@@ -652,8 +652,8 @@ pub fn apply_schema(
                 &Cmd::Stmt(Stmt::CreateIndex {
                     unique: false,
                     if_not_exists: false,
-                    idx_name: QualifiedName::single(Name(idx_name.clone())),
-                    tbl_name: Name(index.tbl_name.clone()),
+                    idx_name: QualifiedName::single(Name(idx_name.clone().into())),
+                    tbl_name: Name(index.tbl_name.clone().into()),
                     columns: index.columns.clone(),
                     where_clause: index.where_clause.clone(),
                 })
@@ -693,10 +693,14 @@ pub fn parse_sql_to_schema(schema: &mut Schema, sql: &str) -> Result<(), SchemaE
                         CreateTableBody::ColumnsAndConstraints {
                             columns,
                             constraints,
-                            options,
+                            ..
                         },
                 } => {
-                    let table = prepare_table(tbl_name, columns, constraints.as_ref(), options);
+                    let table = prepare_table(
+                        tbl_name,
+                        &columns.values().cloned().collect::<Vec<_>>(),
+                        constraints.as_ref(),
+                    );
                     schema.tables.insert(table.name.clone(), table);
                     trace!("inserted table: {}", tbl_name.name.0);
                 }
@@ -708,10 +712,9 @@ pub fn parse_sql_to_schema(schema: &mut Schema, sql: &str) -> Result<(), SchemaE
                     where_clause,
                     ..
                 } => {
-                    let tbl_name =
-                        unquote(tbl_name.0.as_str()).unwrap_or_else(|_| tbl_name.0.clone());
-                    let idx_name = unquote(idx_name.name.0.as_str())
-                        .unwrap_or_else(|_| idx_name.name.0.clone());
+                    let tbl_name = unquote(&tbl_name.0).unwrap_or_else(|_| tbl_name.0.to_string());
+                    let idx_name =
+                        unquote(&idx_name.name.0).unwrap_or_else(|_| idx_name.name.0.to_string());
                     if let Some(table) = schema.tables.get_mut(tbl_name.as_str()) {
                         table.indexes.insert(
                             idx_name.clone(),
@@ -753,7 +756,6 @@ fn prepare_table(
     tbl_name: &QualifiedName,
     columns: &[ColumnDefinition],
     constraints: Option<&Vec<NamedTableConstraint>>,
-    options: &TableOptions,
 ) -> Table {
     let pk = constraints
         .and_then(|constraints| {
@@ -765,7 +767,7 @@ fn prepare_table(
                             .iter()
                             .filter_map(|col| match &col.expr {
                                 Expr::Id(id) => {
-                                    Some(unquote(&id.0).unwrap_or_else(|_| id.0.clone()))
+                                    Some(unquote(&id.0).unwrap_or_else(|_| id.0.to_string()))
                                 }
                                 _ => None,
                             })
@@ -782,12 +784,12 @@ fn prepare_table(
                         matches!(named.constraint, ColumnConstraint::PrimaryKey { .. })
                     })
                 })
-                .map(|def| unquote(&def.col_name.0).unwrap_or_else(|_| def.col_name.0.clone()))
+                .map(|def| unquote(&def.col_name.0).unwrap_or_else(|_| def.col_name.0.to_string()))
                 .collect()
         });
 
     Table {
-        name: unquote(&tbl_name.name.0).unwrap_or_else(|_| tbl_name.name.0.clone()),
+        name: unquote(&tbl_name.name.0).unwrap_or_else(|_| tbl_name.name.0.to_string()),
         indexes: IndexMap::new(),
         columns: columns
             .iter()
@@ -812,9 +814,10 @@ fn prepare_table(
                 });
                 let nullable = !not_nullable;
 
-                let primary_key = pk.contains(&def.col_name.0);
+                let primary_key = pk.contains(def.col_name.0.as_ref());
 
-                let col_name = unquote(&def.col_name.0).unwrap_or_else(|_| def.col_name.0.clone());
+                let col_name =
+                    unquote(&def.col_name.0).unwrap_or_else(|_| def.col_name.0.to_string());
 
                 (
                     col_name.clone(),
@@ -877,9 +880,12 @@ fn prepare_table(
             .collect::<IndexMap<_, _>>(),
         pk,
         raw: CreateTableBody::ColumnsAndConstraints {
-            columns: columns.to_vec(),
+            columns: columns
+                .iter()
+                .map(|col| (col.col_name.clone(), col.clone()))
+                .collect(),
             constraints: constraints.cloned(),
-            options: *options,
+            flags: sqlite3_parser::ast::TabFlags::empty(),
         },
     }
 }
@@ -894,7 +900,7 @@ fn extract_expr_columns(expr: &Expr, cols: &mut Vec<String>) {
             }
         }
         Expr::Id(colname) => {
-            cols.push(unquote(&colname.0).ok().unwrap_or(colname.0.clone()));
+            cols.push(unquote(&colname.0).ok().unwrap_or(colname.0.to_string()));
         }
         _ => {}
     }

@@ -11,10 +11,7 @@ use std::{
 };
 use tracing::warn;
 
-use deadpool::{
-    async_trait,
-    managed::{self, Object},
-};
+use deadpool::managed::{self, Object};
 use metrics::counter;
 use rusqlite::{CachedStatement, InterruptHandle, Params, Transaction};
 use tokio::time::{Duration, sleep};
@@ -88,7 +85,6 @@ impl SqliteConn for rusqlite::Connection {
     }
 }
 
-#[async_trait]
 impl<T> managed::Manager for Manager<T>
 where
     T: SqliteConn,
@@ -96,20 +92,30 @@ where
     type Type = T;
     type Error = rusqlite::Error;
 
-    async fn create(&self) -> Result<Self::Type, Self::Error> {
-        (self.transform)(rusqlite::Connection::open_with_flags(
-            &self.config.path,
-            self.config.open_flags,
-        )?)
+    fn create(&self) -> impl std::future::Future<Output = Result<Self::Type, Self::Error>> + Send {
+        let config_path = self.config.path.clone();
+        let config_open_flags = self.config.open_flags;
+        let transform = &self.transform;
+
+        async move {
+            transform(rusqlite::Connection::open_with_flags(
+                &config_path,
+                config_open_flags,
+            )?)
+        }
     }
 
-    async fn recycle(
+    fn recycle(
         &self,
         _conn: &mut Self::Type,
         _: &Metrics,
-    ) -> managed::RecycleResult<Self::Error> {
-        let _ = self.recycle_count.fetch_add(1, Ordering::Relaxed);
-        Ok(())
+    ) -> impl std::future::Future<Output = managed::RecycleResult<Self::Error>> + Send {
+        let recycle_count = &self.recycle_count;
+
+        async move {
+            let _ = recycle_count.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
     }
 }
 

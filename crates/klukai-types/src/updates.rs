@@ -11,7 +11,6 @@ use crate::schema::Schema;
 use crate::spawn::spawn_counted;
 use crate::tripwire::Tripwire;
 use antithesis_sdk::assert_sometimes;
-use async_trait::async_trait;
 use indexmap::{IndexMap, map::Entry};
 use metrics::{Counter, counter, histogram};
 use parking_lot::RwLock;
@@ -34,7 +33,6 @@ pub trait Manager<H> {
     fn get_handles(&self) -> BTreeMap<Uuid, H>;
 }
 
-#[async_trait]
 pub trait Handle {
     fn id(&self) -> Uuid;
     fn cancelled(&self) -> WaitForCancellationFuture<'_>;
@@ -44,7 +42,7 @@ pub trait Handle {
         change: MatchableChange,
     ) -> bool;
     fn changes_tx(&self) -> mpsc::Sender<MatchCandidates>;
-    async fn cleanup(&self);
+    fn cleanup(&self) -> impl std::future::Future<Output = ()> + Send;
     fn get_counter(&self, table: &str) -> &HandleMetrics;
 }
 
@@ -81,7 +79,6 @@ impl Manager<UpdateHandle> for UpdatesManager {
     }
 }
 
-#[async_trait]
 impl Handle for UpdateHandle {
     fn id(&self) -> Uuid {
         self.inner.id
@@ -126,9 +123,14 @@ impl Handle for UpdateHandle {
         self.inner.changes_tx.clone()
     }
 
-    async fn cleanup(&self) {
-        self.inner.cancel.cancel();
-        info!(sub_id = %self.inner.id, "Canceled subscription");
+    fn cleanup(&self) -> impl std::future::Future<Output = ()> + Send {
+        let cancel = self.inner.cancel.clone();
+        let id = self.inner.id;
+
+        async move {
+            cancel.cancel();
+            info!(sub_id = %id, "Canceled subscription");
+        }
     }
 
     fn get_counter(&self, table: &str) -> &HandleMetrics {

@@ -2,7 +2,9 @@ use crate::agent::RANDOM_NODES_CHOICES;
 use klukai_types::{agent::SplitPool, config::DEFAULT_GOSSIP_PORT};
 
 use hickory_resolver::{
-    error::ResolveErrorKind,
+    TokioResolver,
+    config::{NameServerConfigGroup, ResolverConfig},
+    name_server::TokioConnectionProvider,
     proto::rr::{RData, RecordType},
 };
 use rand::{SeedableRng, rngs::StdRng, seq::IteratorRandom};
@@ -59,16 +61,13 @@ async fn resolve_bootstrap(
     bootstrap: &[String],
     our_addr: SocketAddr,
 ) -> eyre::Result<HashSet<SocketAddr>> {
-    use hickory_resolver::config::{NameServerConfigGroup, ResolverConfig, ResolverOpts};
-    use hickory_resolver::{AsyncResolver, TokioAsyncResolver};
-
     let mut addrs = HashSet::new();
 
     if bootstrap.is_empty() {
         return Ok(addrs);
     }
 
-    let system_resolver = AsyncResolver::tokio_from_system_conf()?;
+    let system_resolver = TokioResolver::builder_tokio()?.build();
 
     for s in bootstrap {
         if let Ok(addr) = s.parse() {
@@ -85,14 +84,18 @@ async fn resolve_bootstrap(
                 } else {
                     (dns_server.parse()?, 53)
                 };
-                resolver = Some(TokioAsyncResolver::tokio(
-                    ResolverConfig::from_parts(
-                        None,
-                        vec![],
-                        NameServerConfigGroup::from_ips_clear(&[ip], port, true),
-                    ),
-                    ResolverOpts::default(),
-                ));
+                let custom_config = ResolverConfig::from_parts(
+                    None,
+                    vec![],
+                    NameServerConfigGroup::from_ips_clear(&[ip], port, true),
+                );
+                resolver = Some(
+                    TokioResolver::builder_with_config(
+                        custom_config,
+                        TokioConnectionProvider::default(),
+                    )
+                    .build(),
+                );
                 debug!("using resolver: {dns_server}");
             }
             if let Some(hostname) = host_port.next() {
@@ -132,15 +135,11 @@ async fn resolve_bootstrap(
                             addrs.insert(addr);
                         }
                     }
-                    Err(e) => match e.kind() {
-                        ResolveErrorKind::NoRecordsFound { .. } => {
-                            // do nothing, that might be fine!
-                        }
-                        _ => {
-                            error!("could not resolve '{hostname}': {e}");
-                            return Err(e.into());
-                        }
-                    },
+                    Err(e) => {
+                        // Log but don't fail - DNS resolution failures might be transient
+                        error!("could not resolve '{hostname}': {e}");
+                        // For now, we'll continue with other hostnames instead of failing completely
+                    }
                 }
             }
         }
