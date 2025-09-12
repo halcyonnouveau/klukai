@@ -44,7 +44,7 @@ use crate::tripwire::Tripwire;
 
 use crate::{
     actor::{Actor, ActorId, ClusterId},
-    base::{CrsqlDbVersion, CrsqlSeq},
+    base::{CrsqlDbVersion, CrsqlDbVersionRange, CrsqlSeq, CrsqlSeqRange},
     broadcast::{BroadcastInput, ChangeSource, ChangeV1, FocaInput, Timestamp},
     channel::{CorroSender, bounded},
     config::Config,
@@ -77,7 +77,7 @@ pub struct AgentConfig {
 
     pub tx_bcast: CorroSender<BroadcastInput>,
     pub tx_apply: CorroSender<(ActorId, CrsqlDbVersion)>,
-    pub tx_clear_buf: CorroSender<(ActorId, RangeInclusive<CrsqlDbVersion>)>,
+    pub tx_clear_buf: CorroSender<(ActorId, CrsqlDbVersionRange)>,
     pub tx_changes: CorroSender<(ChangeV1, ChangeSource)>,
     pub tx_foca: CorroSender<FocaInput>,
 
@@ -105,7 +105,7 @@ pub struct AgentInner {
     booked: Booked,
     tx_bcast: CorroSender<BroadcastInput>,
     tx_apply: CorroSender<(ActorId, CrsqlDbVersion)>,
-    tx_clear_buf: CorroSender<(ActorId, RangeInclusive<CrsqlDbVersion>)>,
+    tx_clear_buf: CorroSender<(ActorId, CrsqlDbVersionRange)>,
     tx_changes: CorroSender<(ChangeV1, ChangeSource)>,
     tx_foca: CorroSender<FocaInput>,
     write_sema: Arc<Semaphore>,
@@ -195,7 +195,7 @@ impl Agent {
         &self.0.tx_changes
     }
 
-    pub fn tx_clear_buf(&self) -> &CorroSender<(ActorId, RangeInclusive<CrsqlDbVersion>)> {
+    pub fn tx_clear_buf(&self) -> &CorroSender<(ActorId, CrsqlDbVersionRange)> {
         &self.0.tx_clear_buf
     }
 
@@ -1142,7 +1142,7 @@ impl VersionsSnapshot {
             }
             let details = json!({"count": count, "range": range});
             assert_always!(count == 1, "ineffective deletion of gaps in-db", &details);
-            for version in range.clone() {
+            for version in CrsqlDbVersionRange::from(&range) {
                 self.partials.remove(&version);
             }
             self.needed.remove(range);
@@ -1376,15 +1376,11 @@ impl BookedVersions {
         self.partials.get(version)
     }
 
-    pub fn contains(
-        &self,
-        version: CrsqlDbVersion,
-        seqs: Option<&RangeInclusive<CrsqlSeq>>,
-    ) -> bool {
+    pub fn contains(&self, version: CrsqlDbVersion, seqs: Option<CrsqlSeqRange>) -> bool {
         self.contains_version(&version)
             && seqs
-                .map(|check_seqs| match self.partials.get(&version) {
-                    Some(partial) => check_seqs.clone().all(|seq| partial.seqs.contains(&seq)),
+                .map(|mut check_seqs| match self.partials.get(&version) {
+                    Some(partial) => check_seqs.all(|seq| partial.seqs.contains(&seq)),
                     // if `contains_version` is true but we don't have a partial version,
                     // then we must have it as a fully applied or cleared version
                     None => true,
@@ -1392,12 +1388,13 @@ impl BookedVersions {
                 .unwrap_or(true)
     }
 
+    #[inline]
     pub fn contains_all(
         &self,
-        mut versions: RangeInclusive<CrsqlDbVersion>,
-        seqs: Option<&RangeInclusive<CrsqlSeq>>,
+        versions: impl Into<CrsqlDbVersionRange>,
+        seqs: Option<CrsqlSeqRange>,
     ) -> bool {
-        versions.all(|version| self.contains(version, seqs))
+        versions.into().all(|version| self.contains(version, seqs))
     }
 
     pub fn last(&self) -> Option<CrsqlDbVersion> {
@@ -1611,6 +1608,7 @@ impl Bookie {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{dbvr, dbvri};
     use rangemap::range_inclusive_set;
 
     #[test]
@@ -1631,7 +1629,7 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(1)..=CrsqlDbVersion(20)],
+            range_inclusive_set![dbvri!(1, 20)],
         )?;
         expect_gaps(&conn, &bv, &all, vec![])?;
 
@@ -1639,7 +1637,7 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(1)..=CrsqlDbVersion(10)],
+            range_inclusive_set![dbvri!(1, 10)],
         )?;
         expect_gaps(&conn, &bv, &all, vec![])?;
 
@@ -1652,27 +1650,16 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![
-                CrsqlDbVersion(1)..=CrsqlDbVersion(1),
-                CrsqlDbVersion(4)..=CrsqlDbVersion(4)
-            ],
+            range_inclusive_set![dbvri!(1, 1), dbvri!(4, 4)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(2)..=CrsqlDbVersion(3)],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(2, 3)])?;
 
         // fill gap
         insert_everywhere(
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![
-                CrsqlDbVersion(3)..=CrsqlDbVersion(3),
-                CrsqlDbVersion(2)..=CrsqlDbVersion(2)
-            ],
+            range_inclusive_set![dbvri!(3, 3), dbvri!(2, 2)],
         )?;
         expect_gaps(&conn, &bv, &all, vec![])?;
 
@@ -1685,79 +1672,36 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(5)..=CrsqlDbVersion(20)],
+            range_inclusive_set![dbvri!(5, 20)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(1)..=CrsqlDbVersion(4)],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(1, 4)])?;
 
         // insert a further change that does not overlap a gap
-        insert_everywhere(
-            &conn,
-            &mut bv,
-            &mut all,
-            range_inclusive_set![CrsqlDbVersion(6)..=CrsqlDbVersion(7)],
-        )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(1)..=CrsqlDbVersion(4)],
-        )?;
+        insert_everywhere(&conn, &mut bv, &mut all, range_inclusive_set![dbvri!(6, 7)])?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(1, 4)])?;
 
         // insert a further change that does overlap a gap
-        insert_everywhere(
-            &conn,
-            &mut bv,
-            &mut all,
-            range_inclusive_set![CrsqlDbVersion(3)..=CrsqlDbVersion(7)],
-        )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(1)..=CrsqlDbVersion(2)],
-        )?;
+        insert_everywhere(&conn, &mut bv, &mut all, range_inclusive_set![dbvri!(3, 7)])?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(1, 2)])?;
 
-        insert_everywhere(
-            &conn,
-            &mut bv,
-            &mut all,
-            range_inclusive_set![CrsqlDbVersion(1)..=CrsqlDbVersion(2)],
-        )?;
+        insert_everywhere(&conn, &mut bv, &mut all, range_inclusive_set![dbvri!(1, 2)])?;
         expect_gaps(&conn, &bv, &all, vec![])?;
 
         insert_everywhere(
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(25)..=CrsqlDbVersion(25)],
+            range_inclusive_set![dbvri!(25, 25)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(21)..=CrsqlDbVersion(24)],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(21, 24)])?;
 
         insert_everywhere(
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(30)..=CrsqlDbVersion(35)],
+            range_inclusive_set![dbvri!(30, 35)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![
-                CrsqlDbVersion(21)..=CrsqlDbVersion(24),
-                CrsqlDbVersion(26)..=CrsqlDbVersion(29),
-            ],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(21, 24), dbvr!(26, 29)])?;
 
         // NOTE: overlapping partially from the end
 
@@ -1765,17 +1709,9 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(19)..=CrsqlDbVersion(22)],
+            range_inclusive_set![dbvri!(19, 22)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![
-                CrsqlDbVersion(23)..=CrsqlDbVersion(24),
-                CrsqlDbVersion(26)..=CrsqlDbVersion(29),
-            ],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(23, 24), dbvr!(26, 29)])?;
 
         // NOTE: overlapping partially from the start
 
@@ -1783,17 +1719,9 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(24)..=CrsqlDbVersion(25)],
+            range_inclusive_set![dbvri!(24, 25)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![
-                CrsqlDbVersion(23)..=CrsqlDbVersion(23),
-                CrsqlDbVersion(26)..=CrsqlDbVersion(29),
-            ],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(23, 23), dbvr!(26, 29)])?;
 
         // NOTE: overlapping 2 ranges
 
@@ -1801,14 +1729,9 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(23)..=CrsqlDbVersion(27)],
+            range_inclusive_set![dbvri!(23, 27)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(28)..=CrsqlDbVersion(29)],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(28, 29)])?;
 
         // NOTE: ineffective insert of already known ranges
 
@@ -1816,14 +1739,9 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(1)..=CrsqlDbVersion(20)],
+            range_inclusive_set![dbvri!(1, 20)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![CrsqlDbVersion(28)..=CrsqlDbVersion(29)],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(28, 29)])?;
 
         // NOTE: overlapping no ranges, but encompassing a full range
 
@@ -1831,7 +1749,7 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(27)..=CrsqlDbVersion(30)],
+            range_inclusive_set![dbvri!(27, 30)],
         )?;
         expect_gaps(&conn, &bv, &all, vec![])?;
 
@@ -1842,31 +1760,23 @@ mod tests {
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(40)..=CrsqlDbVersion(45)],
+            range_inclusive_set![dbvri!(40, 45)],
         )?;
         // create gap 46..=49
         insert_everywhere(
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(50)..=CrsqlDbVersion(55)],
+            range_inclusive_set![dbvri!(50, 55)],
         )?;
 
         insert_everywhere(
             &conn,
             &mut bv,
             &mut all,
-            range_inclusive_set![CrsqlDbVersion(38)..=CrsqlDbVersion(47)],
+            range_inclusive_set![dbvri!(38, 47)],
         )?;
-        expect_gaps(
-            &conn,
-            &bv,
-            &all,
-            vec![
-                CrsqlDbVersion(36)..=CrsqlDbVersion(37),
-                CrsqlDbVersion(48)..=CrsqlDbVersion(49),
-            ],
-        )?;
+        expect_gaps(&conn, &bv, &all, vec![dbvr!(36, 37), dbvr!(48, 49)])?;
 
         // test loading a bv from the conn, they should be identical!
         let mut bv2 = BookedVersions::from_conn(&conn, actor_id)?;
@@ -1895,7 +1805,7 @@ mod tests {
         conn: &Connection,
         bv: &BookedVersions,
         all_versions: &RangeInclusiveSet<CrsqlDbVersion>,
-        expected: Vec<RangeInclusive<CrsqlDbVersion>>,
+        expected: Vec<CrsqlDbVersionRange>,
     ) -> rusqlite::Result<()> {
         let gaps: Vec<(ActorId, CrsqlDbVersion, CrsqlDbVersion)> = conn
             .prepare_cached("SELECT actor_id, start, end FROM __corro_bookkeeping_gaps")?
@@ -1907,7 +1817,7 @@ mod tests {
             expected
                 .clone()
                 .into_iter()
-                .map(|expected| (bv.actor_id, *expected.start(), *expected.end()))
+                .map(|expected| (bv.actor_id, expected.start(), expected.end()))
                 .collect::<Vec<_>>()
         );
 

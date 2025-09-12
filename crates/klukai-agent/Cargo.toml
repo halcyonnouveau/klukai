@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 description = "Agent component for Klukai Corrosion"
 
+[lints]
+workspace = true
+
 [dependencies]
 klukai-types.workspace = true
 

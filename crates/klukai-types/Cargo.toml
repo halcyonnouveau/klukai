@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 description = "Core types and utilities for Klukai Corrosion"
 
+[lints]
+workspace = true
+
 [dependencies]
 arc-swap = { workspace = true }
 bytes = { workspace = true }
@@ -46,6 +49,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
 smallvec = { workspace = true }
+signal-hook = { workspace = true }
+signal-hook-tokio = { workspace = true }
 speedy = { workspace = true }
 sqlite3-parser = { workspace = true }
 tempfile = { workspace = true }

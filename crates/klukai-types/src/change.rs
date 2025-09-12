@@ -1,4 +1,4 @@
-use std::{iter::Peekable, ops::RangeInclusive};
+use std::iter::Peekable;
 
 pub use crate::api::SqliteValue;
 use crate::api::{ColumnName, TableName};
@@ -11,7 +11,7 @@ use tracing::{debug, trace, warn};
 
 use crate::{
     agent::{Agent, BookedVersions, ChangeError, VersionsSnapshot},
-    base::{CrsqlDbVersion, CrsqlSeq},
+    base::{CrsqlDbVersion, CrsqlSeq, CrsqlSeqRange},
     broadcast::Timestamp,
 };
 
@@ -103,7 +103,7 @@ impl<I> Iterator for ChunkedChanges<I>
 where
     I: Iterator<Item = rusqlite::Result<Change>>,
 {
-    type Item = Result<(Vec<Change>, RangeInclusive<CrsqlSeq>), rusqlite::Error>;
+    type Item = Result<(Vec<Change>, CrsqlSeqRange), rusqlite::Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // previously marked as done because the Rows iterator returned None
@@ -152,7 +152,7 @@ where
 
                         return Some(Ok((
                             self.changes.drain(..).collect(),
-                            start_seq..=self.last_pushed_seq,
+                            CrsqlSeqRange::new(start_seq, self.last_pushed_seq),
                         )));
                     }
                 }
@@ -170,8 +170,8 @@ where
 
         // return buffered changes
         Some(Ok((
-            self.changes.clone(),                // no need to drain here like before
-            self.last_start_seq..=self.last_seq, // even if empty, this is all we have still applied
+            self.changes.clone(), // no need to drain here like before
+            CrsqlSeqRange::new(self.last_start_seq, self.last_seq), // even if empty, this is all we have still applied
         )))
     }
 }
@@ -261,21 +261,19 @@ pub fn insert_local_changes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dbsr;
 
     #[test]
     fn test_change_chunker() {
         // empty interator
         let mut chunker = ChunkedChanges::new(vec![].into_iter(), CrsqlSeq(0), CrsqlSeq(100), 50);
 
-        assert_eq!(
-            chunker.next(),
-            Some(Ok((vec![], CrsqlSeq(0)..=CrsqlSeq(100))))
-        );
+        assert_eq!(chunker.next(), Some(Ok((vec![], dbsr!(0, 100)))));
         assert_eq!(chunker.next(), None);
 
-        let changes: Vec<Change> = (CrsqlSeq(0)..CrsqlSeq(100))
+        let changes: Vec<Change> = (0..100)
             .map(|seq| Change {
-                seq,
+                seq: CrsqlSeq(seq),
                 ..Default::default()
             })
             .collect();
@@ -297,12 +295,12 @@ mod tests {
             chunker.next(),
             Some(Ok((
                 vec![changes[0].clone(), changes[1].clone()],
-                CrsqlSeq(0)..=CrsqlSeq(1)
+                dbsr!(0, 1)
             )))
         );
         assert_eq!(
             chunker.next(),
-            Some(Ok((vec![changes[2].clone()], CrsqlSeq(2)..=CrsqlSeq(100))))
+            Some(Ok((vec![changes[2].clone()], dbsr!(2, 100))))
         );
         assert_eq!(chunker.next(), None);
 
@@ -315,7 +313,7 @@ mod tests {
 
         assert_eq!(
             chunker.next(),
-            Some(Ok((vec![changes[0].clone()], CrsqlSeq(0)..=CrsqlSeq(0))))
+            Some(Ok((vec![changes[0].clone()], dbsr!(0, 0))))
         );
         assert_eq!(chunker.next(), None);
 
@@ -331,7 +329,7 @@ mod tests {
             chunker.next(),
             Some(Ok((
                 vec![changes[0].clone(), changes[2].clone()],
-                CrsqlSeq(0)..=CrsqlSeq(100)
+                dbsr!(0, 100)
             )))
         );
 
@@ -360,7 +358,7 @@ mod tests {
                     changes[7].clone(),
                     changes[8].clone()
                 ],
-                CrsqlSeq(0)..=CrsqlSeq(100)
+                dbsr!(0, 100)
             )))
         );
 
@@ -384,7 +382,7 @@ mod tests {
             chunker.next(),
             Some(Ok((
                 vec![changes[2].clone(), changes[4].clone(),],
-                CrsqlSeq(0)..=CrsqlSeq(4)
+                dbsr!(0, 4)
             )))
         );
 
@@ -392,7 +390,7 @@ mod tests {
             chunker.next(),
             Some(Ok((
                 vec![changes[7].clone(), changes[8].clone(),],
-                CrsqlSeq(5)..=CrsqlSeq(10)
+                dbsr!(5, 10)
             )))
         );
 

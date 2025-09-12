@@ -194,7 +194,9 @@ pub struct AgentCheck {
 
 #[derive(Debug, Copy, Eq, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ConsulCheckStatus {
+    #[default]
     Passing,
     Warning,
     Critical,
@@ -229,11 +231,5 @@ impl FromSql for ConsulCheckStatus {
 impl fmt::Display for ConsulCheckStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.as_str().fmt(f)
-    }
-}
-
-impl Default for ConsulCheckStatus {
-    fn default() -> Self {
-        Self::Passing
     }
 }

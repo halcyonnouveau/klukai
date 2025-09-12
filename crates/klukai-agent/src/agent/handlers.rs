@@ -461,13 +461,13 @@ async fn vacuum_db(pool: &SplitPool, lim: u64) -> eyre::Result<()> {
 /// See `db_cleanup` and `vacuum_db`
 pub fn spawn_handle_db_maintenance(agent: &Agent) {
     let mut wal_path = agent.config().db.path.clone();
-    let wal_threshold = agent.config().perf.wal_threshold_gb as u64;
+    let wal_threshold = agent.config().perf.wal_threshold_mb as u64;
     wal_path.set_extension(format!("{}-wal", wal_path.extension().unwrap_or_default()));
 
     let pool = agent.pool().clone();
 
     tokio::spawn(async move {
-        let truncate_wal_threshold: u64 = wal_threshold * 1024 * 1024 * 1024;
+        let truncate_wal_threshold: u64 = wal_threshold * 1024 * 1024;
 
         // try to initially truncate the WAL
         match wal_checkpoint_over_threshold(wal_path.as_path(), &pool, truncate_wal_threshold).await
@@ -675,21 +675,21 @@ pub async fn handle_changes(
             continue;
         }
 
-        if let Some(mut seqs) = change.seqs().cloned() {
-            let v = *change.versions().start();
+        if let Some(mut seqs) = change.seqs() {
+            let v = change.versions().start();
             if let Some(seen_seqs) = seen.get(&(change.actor_id, v))
                 && seqs.all(|seq| seen_seqs.contains(&seq))
             {
                 continue;
             }
-        } else {
-            // empty versions
-            if change
-                .versions()
-                .all(|v| seen.contains_key(&(change.actor_id, v)))
-            {
-                continue;
+        } else if change
+            .versions()
+            .all(|v| seen.contains_key(&(change.actor_id, v)))
+        {
+            if matches!(src, ChangeSource::Broadcast) {
+                counter!("corro.broadcast.duplicate.count", "from" => "cache").increment(1);
             }
+            continue;
         }
 
         let src_str: &'static str = src.into();
@@ -726,6 +726,9 @@ pub async fn handle_changes(
                 .contains_all(change.versions(), change.seqs())
         {
             trace!("already seen, stop disseminating");
+            if matches!(src, ChangeSource::Broadcast) {
+                counter!("corro.broadcast.duplicate.count", "from" => "bookie").increment(1);
+            }
             continue;
         }
 
@@ -735,8 +738,8 @@ pub async fn handle_changes(
             if let Some((dropped_change, _, _)) = queue.pop_front() {
                 for v in dropped_change.versions() {
                     if let Entry::Occupied(mut entry) = seen.entry((change.actor_id, v)) {
-                        if let Some(seqs) = dropped_change.seqs().cloned() {
-                            entry.get_mut().remove(seqs);
+                        if let Some(seqs) = dropped_change.seqs() {
+                            entry.get_mut().remove(seqs.into());
                         } else {
                             entry.swap_remove_entry();
                         }
@@ -759,8 +762,8 @@ pub async fn handle_changes(
         // this will only run once for a non-empty changeset
         for v in change.versions() {
             let entry = seen.entry((change.actor_id, v)).or_default();
-            if let Some(seqs) = change.seqs().cloned() {
-                entry.extend([seqs]);
+            if let Some(seqs) = change.seqs() {
+                entry.extend([seqs.into()]);
             }
         }
 
@@ -906,7 +909,7 @@ mod tests {
     use klukai_tests::TEST_SCHEMA;
     use klukai_types::api::{ColumnName, TableName};
     use klukai_types::{
-        base::CrsqlDbVersion, broadcast::Changeset, change::Change, config::Config,
+        base::CrsqlDbVersion, broadcast::Changeset, change::Change, config::Config, dbsr, dbvr,
         pubsub::pack_columns,
     };
     use rusqlite::Connection;
@@ -973,7 +976,7 @@ mod tests {
             for i in (1i64..=10i64).rev() {
                 let crsql_row = Change {
                     table: TableName("tests".into()),
-                    pk: pack_columns(&vec![i.into()])?,
+                    pk: pack_columns(&[i.into()])?,
                     cid: ColumnName("text".into()),
                     val: "two override".into(),
                     col_version: 1,
@@ -989,7 +992,7 @@ mod tests {
                         changeset: Changeset::Full {
                             version: CrsqlDbVersion(i as u64),
                             changes: vec![crsql_row.clone()],
-                            seqs: CrsqlSeq(0)..=CrsqlSeq(0),
+                            seqs: dbsr!(0, 0),
                             last_seq: CrsqlSeq(0),
                             ts: agent.clock().new_timestamp().into(),
                         },
@@ -1009,8 +1012,8 @@ mod tests {
             .unwrap()
             .read::<&str, _>("test", None)
             .await;
-        assert!(booked.contains_all(CrsqlDbVersion(6)..=CrsqlDbVersion(10), None));
-        assert!(booked.contains_all(CrsqlDbVersion(1)..=CrsqlDbVersion(3), None));
+        assert!(booked.contains_all(dbvr!(6, 10), None));
+        assert!(booked.contains_all(dbvr!(1, 3), None));
         assert!(!booked.contains_version(&CrsqlDbVersion(5)));
         assert!(!booked.contains_version(&CrsqlDbVersion(4)));
 
@@ -1027,7 +1030,7 @@ mod tests {
             db_conn.execute_batch("PRAGMA auto_vacuum = INCREMENTAL")?;
         }
 
-        println!("temp db: {:?}", db_path);
+        println!("temp db: {db_path:?}");
         let write_sema = Arc::new(Semaphore::new(1));
         let pool = SplitPool::create(db_path, write_sema.clone()).await?;
 

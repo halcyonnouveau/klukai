@@ -143,6 +143,8 @@ notify = { version = "8.2", default-features = false, features = [
     "macos_kqueue",
 ] }
 notify-debouncer-mini = { version = "0.7", default-features = false }
+signal-hook = "0.3"
+signal-hook-tokio = { version = "0.3", features = ["futures-v0_3"] }
 tempfile = "3.21"
 
 # Error handling and parsing
@@ -188,3 +190,5 @@ codegen-units = 16
 # backtraces are super expensive to compute in development,
 # always optimize that crate
 opt-level = 2
+
+[workspace.lints.clippy]

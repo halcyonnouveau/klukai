@@ -1,10 +1,4 @@
-use std::{
-    cmp, fmt, io,
-    num::NonZeroU32,
-    num::ParseIntError,
-    ops::{Deref, RangeInclusive},
-    time::Duration,
-};
+use std::{cmp, fmt, io, num::NonZeroU32, num::ParseIntError, ops::Deref, time::Duration};
 
 use crate::api::{ColumnName, SqliteValue};
 use antithesis_sdk::assert_sometimes;
@@ -29,7 +23,7 @@ use uhlc::NTP64;
 use crate::{
     actor::{Actor, ActorId, ClusterId},
     agent::Agent,
-    base::{CrsqlDbVersion, CrsqlSeq},
+    base::{CrsqlDbVersion, CrsqlDbVersionRange, CrsqlSeq, CrsqlSeqRange},
     change::{Change, ChunkedChanges, MAX_CHANGES_BYTE_SIZE, row_to_change},
     channel::CorroSender,
     sqlite::SqlitePoolError,
@@ -128,20 +122,20 @@ impl Deref for ChangeV1 {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Changeset {
     Empty {
-        versions: RangeInclusive<CrsqlDbVersion>,
+        versions: CrsqlDbVersionRange,
         ts: Option<Timestamp>,
     },
     Full {
         version: CrsqlDbVersion,
         changes: Vec<Change>,
         // cr-sqlite sequences contained in this changeset
-        seqs: RangeInclusive<CrsqlSeq>,
+        seqs: CrsqlSeqRange,
         // last cr-sqlite sequence for the complete changeset
         last_seq: CrsqlSeq,
         ts: Timestamp,
     },
     EmptySet {
-        versions: Vec<RangeInclusive<CrsqlDbVersion>>,
+        versions: Vec<CrsqlDbVersionRange>,
         ts: Timestamp,
     },
 }
@@ -161,31 +155,30 @@ impl From<ChangesetParts> for Changeset {
 pub struct ChangesetParts {
     pub version: CrsqlDbVersion,
     pub changes: Vec<Change>,
-    pub seqs: RangeInclusive<CrsqlSeq>,
+    pub seqs: CrsqlSeqRange,
     pub last_seq: CrsqlSeq,
     pub ts: Timestamp,
 }
 
 impl Changeset {
-    pub fn versions(&self) -> RangeInclusive<CrsqlDbVersion> {
+    #[inline]
+    pub fn versions(&self) -> CrsqlDbVersionRange {
         match self {
-            Changeset::Empty { versions, .. } => versions.clone(),
+            Changeset::Empty { versions, .. } => *versions,
             // todo: this returns dummy version because empty set has an array of versions.
             // probably shouldn't be doing this
-            Changeset::EmptySet { .. } => CrsqlDbVersion(0)..=CrsqlDbVersion(0),
-            Changeset::Full { version, .. } => *version..=*version,
+            Changeset::EmptySet { .. } => CrsqlDbVersionRange::empty(),
+            Changeset::Full { version, .. } => CrsqlDbVersionRange::single(*version),
         }
     }
 
     // determine the estimated resource cost of processing a change
     pub fn processing_cost(&self) -> usize {
         match self {
-            Changeset::Empty { versions, .. } => {
-                cmp::min((versions.end().0 - versions.start().0) as usize + 1, 20)
-            }
+            Changeset::Empty { versions, .. } => cmp::min(versions.len(), 20),
             Changeset::EmptySet { versions, .. } => versions
                 .iter()
-                .map(|versions| cmp::min((versions.end().0 - versions.start().0) as usize + 1, 20))
+                .map(|versions| cmp::min(versions.len(), 20))
                 .sum::<usize>(),
             Changeset::Full { changes, .. } => changes.len(),
         }
@@ -195,11 +188,12 @@ impl Changeset {
         self.changes().iter().map(|c| c.db_version).max()
     }
 
-    pub fn seqs(&self) -> Option<&RangeInclusive<CrsqlSeq>> {
+    #[inline]
+    pub fn seqs(&self) -> Option<CrsqlSeqRange> {
         match self {
             Changeset::Empty { .. } => None,
             Changeset::EmptySet { .. } => None,
-            Changeset::Full { seqs, .. } => Some(seqs),
+            Changeset::Full { seqs, .. } => Some(*seqs),
         }
     }
 
@@ -216,14 +210,14 @@ impl Changeset {
             Changeset::Empty { .. } => true,
             Changeset::EmptySet { .. } => true,
             Changeset::Full { seqs, last_seq, .. } => {
-                *seqs.start() == CrsqlSeq(0) && seqs.end() == last_seq
+                seqs.start_int() == 0 && seqs.end_int() == last_seq.0
             }
         }
     }
 
     pub fn len(&self) -> usize {
         match self {
-            Changeset::Empty { .. } => 0, //(versions.end().0 - versions.start().0 + 1) as usize,
+            Changeset::Empty { .. } => 0,
             Changeset::EmptySet { versions, .. } => versions.len(),
             Changeset::Full { changes, .. } => changes.len(),
         }
@@ -292,7 +286,7 @@ where
             0 => {
                 let start = CrsqlDbVersion::read_from(reader)?;
                 let end = CrsqlDbVersion::read_from(reader)?;
-                let versions = start..=end;
+                let versions = (start..=end).into();
                 let ts = Option::<Timestamp>::read_from(reader)?;
                 Ok(Changeset::Empty { versions, ts })
             }
@@ -301,7 +295,7 @@ where
                 let changes = Vec::<Change>::read_from(reader)?;
                 let start_seq = CrsqlSeq::read_from(reader)?;
                 let end_seq = CrsqlSeq::read_from(reader)?;
-                let seqs = start_seq..=end_seq;
+                let seqs = (start_seq..=end_seq).into();
                 let last_seq = CrsqlSeq::read_from(reader)?;
                 let ts = Timestamp::read_from(reader)?;
                 Ok(Changeset::Full {
@@ -318,7 +312,7 @@ where
                 for _ in 0..versions_len {
                     let start = CrsqlDbVersion::read_from(reader)?;
                     let end = CrsqlDbVersion::read_from(reader)?;
-                    versions.push(start..=end);
+                    versions.push((start..=end).into());
                 }
                 let ts = Timestamp::read_from(reader)?;
                 Ok(Changeset::EmptySet { versions, ts })
@@ -682,7 +676,7 @@ mod tests {
     #[test]
     fn test_changeset_empty_serialization() {
         let changeset = Changeset::Empty {
-            versions: CrsqlDbVersion(10)..=CrsqlDbVersion(20),
+            versions: (CrsqlDbVersion(10)..=CrsqlDbVersion(20)).into(),
             ts: Some(Timestamp::from(12345u64)),
         };
 
@@ -698,7 +692,7 @@ mod tests {
     #[test]
     fn test_changeset_empty_with_none_ts() {
         let changeset = Changeset::Empty {
-            versions: CrsqlDbVersion(5)..=CrsqlDbVersion(5),
+            versions: (CrsqlDbVersion(5)..=CrsqlDbVersion(5)).into(),
             ts: None,
         };
 
@@ -713,7 +707,7 @@ mod tests {
         let changeset = Changeset::Full {
             version: CrsqlDbVersion(42),
             changes: vec![], // Empty changes for simplicity
-            seqs: CrsqlSeq(100)..=CrsqlSeq(150),
+            seqs: (CrsqlSeq(100)..=CrsqlSeq(150)).into(),
             last_seq: CrsqlSeq(200),
             ts: Timestamp::from(67890u64),
         };
@@ -728,9 +722,9 @@ mod tests {
     fn test_changeset_empty_set_serialization() {
         let changeset = Changeset::EmptySet {
             versions: vec![
-                CrsqlDbVersion(1)..=CrsqlDbVersion(5),
-                CrsqlDbVersion(10)..=CrsqlDbVersion(15),
-                CrsqlDbVersion(20)..=CrsqlDbVersion(20),
+                (CrsqlDbVersion(1)..=CrsqlDbVersion(5)).into(),
+                (CrsqlDbVersion(10)..=CrsqlDbVersion(15)).into(),
+                (CrsqlDbVersion(20)..=CrsqlDbVersion(20)).into(),
             ],
             ts: Timestamp::from(11111u64),
         };
@@ -758,18 +752,18 @@ mod tests {
     fn test_changeset_roundtrip_all_variants() {
         let test_cases = vec![
             Changeset::Empty {
-                versions: CrsqlDbVersion(1)..=CrsqlDbVersion(1),
+                versions: (CrsqlDbVersion(1)..=CrsqlDbVersion(1)).into(),
                 ts: None,
             },
             Changeset::Full {
                 version: CrsqlDbVersion(1),
                 changes: vec![],
-                seqs: CrsqlSeq(0)..=CrsqlSeq(0),
+                seqs: (CrsqlSeq(0)..=CrsqlSeq(0)).into(),
                 last_seq: CrsqlSeq(0),
                 ts: Timestamp::zero(),
             },
             Changeset::EmptySet {
-                versions: vec![CrsqlDbVersion(1)..=CrsqlDbVersion(3)],
+                versions: vec![(CrsqlDbVersion(1)..=CrsqlDbVersion(3)).into()],
                 ts: Timestamp::from(99999u64),
             },
         ];

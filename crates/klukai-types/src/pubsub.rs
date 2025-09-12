@@ -413,6 +413,16 @@ impl MatcherHandle {
         tx: mpsc::Sender<QueryEvent>,
     ) -> rusqlite::Result<ChangeId> {
         self.wait_for_running_state();
+
+        let mut prepped = conn.prepare_cached("SELECT MIN(id) FROM changes")?;
+        let min_change_id: u64 = prepped.query_row([], |row| row.get(0))?;
+
+        if since.0 < min_change_id {
+            return Err(rusqlite::Error::ModuleError(format!(
+                "subscription already deleted older changes, min change id: {min_change_id}",
+            )));
+        }
+
         let mut query_cols = vec![];
         for i in 0..(self.parsed_columns().len()) {
             query_cols.push(format!("col_{i}"));
@@ -2170,7 +2180,7 @@ pub enum MatcherError {
     #[error("aggregate missing primary key {0}.{1}")]
     AggPrimaryKeyMissing(String, String),
     #[error("JOIN .. ON expression is not supported for join on table '{table}': {expr:?}")]
-    JoinOnExprUnsupported { table: String, expr: Expr },
+    JoinOnExprUnsupported { table: String, expr: Box<Expr> },
     #[error("expression is not supported: {expr:?}")]
     UnsupportedExpr { expr: Expr },
     #[error("could not find table for {tbl_name}.* in corrosion's schema")]
@@ -2221,7 +2231,7 @@ pub enum NormalizeStatementError {
     #[error(transparent)]
     Parse(#[from] sqlite3_parser::lexer::sql::Error),
     #[error("unexpected statement: {0}")]
-    UnexpectedStatement(Cmd),
+    UnexpectedStatement(Box<Cmd>),
     #[error("only 1 statement is supported")]
     Multiple,
     #[error("at least 1 statement is required")]
@@ -2234,7 +2244,7 @@ pub fn normalize_sql(sql: &str) -> Result<String, NormalizeStatementError> {
     let stmt = match parser.next()? {
         Some(Cmd::Stmt(stmt)) => stmt,
         Some(cmd) => {
-            return Err(NormalizeStatementError::UnexpectedStatement(cmd));
+            return Err(NormalizeStatementError::UnexpectedStatement(Box::new(cmd)));
         }
         None => {
             return Err(NormalizeStatementError::NoStatement);
@@ -2453,17 +2463,20 @@ mod tests {
             tx.commit()?;
         }
 
-        let (handle, maybe_created) = subs.get_or_insert(
-            sql,
-            subscriptions_path.as_path(),
-            &schema,
-            &pool,
-            tripwire.clone(),
-        )?;
+        {
+            let (handle, maybe_created) = subs.get_or_insert(
+                sql,
+                subscriptions_path.as_path(),
+                &schema,
+                &pool,
+                tripwire.clone(),
+            )?;
 
-        assert!(maybe_created.is_some());
+            assert!(maybe_created.is_some());
 
-        handle.cleanup().await;
+            handle.cleanup().await;
+            subs.remove(&handle.id());
+        }
 
         tripwire_tx.send(()).await.ok();
         tripwire_worker.await;
@@ -2870,7 +2883,7 @@ mod tests {
             let mut rx = created.evt_rx;
 
             let matcher_id = matcher.id().as_simple().to_string();
-            println!("matcher restored w/ id: {}", matcher_id);
+            println!("matcher restored w/ id: {matcher_id}");
 
             let (catch_up_tx, mut catch_up_rx) = mpsc::channel(1);
 

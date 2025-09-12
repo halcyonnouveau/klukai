@@ -309,7 +309,7 @@ pub enum MatcherUpsertError {
     #[error("could not expand sql statement")]
     CouldNotExpand,
     #[error(transparent)]
-    NormalizeStatement(#[from] NormalizeStatementError),
+    NormalizeStatement(#[from] Box<NormalizeStatementError>),
     #[error(transparent)]
     Matcher(#[from] MatcherError),
     #[error("a `from` query param was supplied, but no existing subscription found")]
@@ -974,6 +974,7 @@ mod tests {
         base::{CrsqlDbVersion, CrsqlSeq},
         broadcast::{ChangeSource, ChangeV1, Changeset},
         change::Change,
+        dbsr,
         pubsub::pack_columns,
         spawn::wait_for_all_pending_handles,
         tripwire::Tripwire,
@@ -984,7 +985,6 @@ mod tests {
         },
     };
     use serde::de::DeserializeOwned;
-    use std::ops::RangeInclusive;
     use std::time::Instant;
     use tokio::time::timeout;
     use tokio_util::codec::{Decoder, LinesCodec};
@@ -1549,7 +1549,7 @@ mod tests {
 
         let change1 = Change {
             table: TableName("buftests".into()),
-            pk: pack_columns(&vec![1i64.into()])?,
+            pk: pack_columns(&[1i64.into()])?,
             cid: ColumnName("col1".into()),
             val: "one".into(),
             col_version: 1,
@@ -1561,7 +1561,7 @@ mod tests {
 
         let change2 = Change {
             table: TableName("buftests".into()),
-            pk: pack_columns(&vec![1i64.into()])?,
+            pk: pack_columns(&[1i64.into()])?,
             cid: ColumnName("col2".into()),
             val: "one line".into(),
             col_version: 1,
@@ -1576,7 +1576,7 @@ mod tests {
             changeset: Changeset::Full {
                 version: CrsqlDbVersion(1),
                 changes: vec![change1, change2],
-                seqs: RangeInclusive::new(CrsqlSeq(0), CrsqlSeq(1)),
+                seqs: dbsr!(0, 1),
                 last_seq: CrsqlSeq(1),
                 ts: Default::default(),
             },
@@ -1658,7 +1658,7 @@ mod tests {
         // send partial change so it is buffered
         let change3 = Change {
             table: TableName("buftests".into()),
-            pk: pack_columns(&vec![2i64.into()])?,
+            pk: pack_columns(&[2i64.into()])?,
             cid: ColumnName("col1".into()),
             val: "two".into(),
             col_version: 1,
@@ -1673,7 +1673,7 @@ mod tests {
             changeset: Changeset::Full {
                 version: CrsqlDbVersion(2),
                 changes: vec![change3],
-                seqs: RangeInclusive::new(CrsqlSeq(0), CrsqlSeq(0)),
+                seqs: dbsr!(0, 0),
                 last_seq: CrsqlSeq(1),
                 ts: Default::default(),
             },
@@ -1700,7 +1700,7 @@ mod tests {
 
         let change4 = Change {
             table: TableName("buftests".into()),
-            pk: pack_columns(&vec![2i64.into()])?,
+            pk: pack_columns(&[2i64.into()])?,
             cid: ColumnName("col2".into()),
             val: "two line".into(),
             col_version: 1,
@@ -1715,7 +1715,7 @@ mod tests {
             changeset: Changeset::Full {
                 version: CrsqlDbVersion(2),
                 changes: vec![change4],
-                seqs: RangeInclusive::new(CrsqlSeq(1), CrsqlSeq(1)),
+                seqs: dbsr!(1, 1),
                 last_seq: CrsqlSeq(1),
                 ts: Default::default(),
             },
@@ -1749,6 +1749,7 @@ mod tests {
 
         tripwire_tx.send(()).await.ok();
         tripwire_worker.await;
+        ta1.agent.subs_manager().drop_handles().await;
         wait_for_all_pending_handles().await;
 
         Ok(())

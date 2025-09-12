@@ -20,7 +20,7 @@ use klukai_types::{
     actor::{Actor, ActorId},
     agent::{Agent, Bookie, ChangeError, CurrentVersion, KnownDbVersion, PartialVersion},
     api::TableName,
-    base::{CrsqlDbVersion, CrsqlSeq},
+    base::{CrsqlDbVersion, CrsqlDbVersionRange, CrsqlSeq},
     broadcast::{ChangeSource, ChangeV1, Changeset, ChangesetParts, FocaCmd, FocaInput},
     channel::CorroReceiver,
     config::AuthzConfig,
@@ -436,7 +436,7 @@ pub async fn apply_fully_buffered_changes_loop(
 /// Compact the database by finding cleared versions
 pub async fn clear_buffered_meta_loop(
     agent: Agent,
-    mut rx_partials: CorroReceiver<(ActorId, RangeInclusive<CrsqlDbVersion>)>,
+    mut rx_partials: CorroReceiver<(ActorId, CrsqlDbVersionRange)>,
 ) {
     let tx_timeout: Duration = Duration::from_secs(agent.config().perf.sql_tx_timeout as u64);
 
@@ -636,7 +636,10 @@ pub async fn process_fully_buffered_changes(
                 info!(%actor_id, %version, "No buffered rows, skipped insertion into crsql_changes");
             }
 
-            if let Err(e) = agent.tx_clear_buf().try_send((actor_id, version..=version)) {
+            if let Err(e) = agent
+                .tx_clear_buf()
+                .try_send((actor_id, CrsqlDbVersionRange::single(version)))
+            {
                 error!("could not schedule buffered data clear: {e}");
             }
 
@@ -678,7 +681,6 @@ pub async fn process_fully_buffered_changes(
 
     if rows_impacted {
         let conn = agent.pool().read().await?;
-        info!(%actor_id, %version, "matching changes for subs from db version {version} actor {actor_id}");
         block_in_place(|| {
             if let Err(e) =
                 match_changes_from_db_version(agent.subs_manager(), &conn, version, actor_id)
@@ -720,7 +722,7 @@ pub async fn process_multiple_changes(
         let versions = change.versions();
         let seqs = change.seqs();
 
-        if !seen.insert((change.actor_id, versions, seqs.cloned())) {
+        if !seen.insert((change.actor_id, versions, seqs)) {
             continue;
         }
 
@@ -803,10 +805,10 @@ pub async fn process_multiple_changes(
 
                 // check if we've seen this version here...
                 if versions.clone().all(|version| match seqs {
-                    Some(check_seqs) => match seen.get(&version) {
+                    Some(mut check_seqs) => match seen.get(&version) {
                         Some(maybe_partial) => match maybe_partial {
                             Some(PartialVersion { seqs, .. }) => {
-                                check_seqs.clone().all(|seq| seqs.contains(&seq))
+                                check_seqs.all(|seq| seqs.contains(&seq))
                             }
                             // other kind of known version
                             None => true,
@@ -821,7 +823,7 @@ pub async fn process_multiple_changes(
                 // optimizing this, insert later!
                 let known = if change.is_complete() && change.is_empty() {
                     let versions = change.versions();
-                    let end = *versions.end();
+                    let end = versions.end();
                     // update db_version in db if it's greater than the max
                     // since we aren't passing any changes to crsql
                     if Some(end) > max {
@@ -889,7 +891,7 @@ pub async fn process_multiple_changes(
                     _ => None,
                 };
 
-                seen.insert(versions.clone(), partial.clone());
+                seen.insert(versions.into(), partial.clone());
                 processed
                     .entry(actor_id)
                     .or_default()
@@ -933,7 +935,7 @@ pub async fn process_multiple_changes(
                 &tx,
                 processed
                     .iter()
-                    .map(|(versions, _)| versions.clone())
+                    .map(|(versions, _)| versions.into())
                     .collect(),
             )
             .map_err(|source| ChangeError::Rusqlite {
@@ -998,7 +1000,7 @@ pub async fn process_multiple_changes(
             }
 
             for (versions, partial) in processed {
-                let version = *versions.start();
+                let version = versions.start();
                 if let Some(partial) = partial {
                     let PartialVersion { seqs, last_seq, .. } =
                         booked_write.insert_partial(version, partial);
@@ -1039,9 +1041,8 @@ pub async fn process_multiple_changes(
 
     let mut change_chunk_size = 0;
 
-    for (actor_id, changeset, db_version, _src) in changesets {
+    for (_actor_id, changeset, db_version, _src) in changesets {
         change_chunk_size += changeset.changes().len();
-        info!(%actor_id, %db_version, "(process_multiple_changes) matching changes for subs from db version {db_version} actor {actor_id}");
         match_changes(agent.subs_manager(), changeset.changes(), db_version);
         match_changes(agent.updates_manager(), changeset.changes(), db_version);
     }
@@ -1155,8 +1156,8 @@ pub fn process_incomplete_version<T: Deref<Target = rusqlite::Connection> + Comm
             named_params![
                 ":actor_id": actor_id,
                 ":db_version": version,
-                ":start": seqs.start(),
-                ":end": seqs.end(),
+                ":start": seqs.start_int(),
+                ":end": seqs.end_int(),
             ],
             |row| Ok(row.get(0)?..=row.get(1)?),
         )
@@ -1164,7 +1165,7 @@ pub fn process_incomplete_version<T: Deref<Target = rusqlite::Connection> + Comm
 
     // re-compute the ranges
     let mut new_ranges = RangeInclusiveSet::from_iter(deleted);
-    new_ranges.insert(seqs.clone());
+    new_ranges.insert((*seqs).into());
 
     let details = json!({"new_ranges": new_ranges});
     assert_always!(
@@ -1207,7 +1208,7 @@ pub fn process_complete_version<T: Deref<Target = rusqlite::Connection> + Commit
     agent: Agent,
     sp: &InterruptibleTransaction<T>,
     actor_id: ActorId,
-    versions: RangeInclusive<CrsqlDbVersion>,
+    versions: CrsqlDbVersionRange,
     parts: ChangesetParts,
 ) -> rusqlite::Result<(KnownDbVersion, Changeset, BTreeMap<TableName, u64>)> {
     let ChangesetParts {
@@ -1222,14 +1223,14 @@ pub fn process_complete_version<T: Deref<Target = rusqlite::Connection> + Commit
 
     debug!(%actor_id, %version, "complete change, applying right away! seqs: {seqs:?}, last_seq: {last_seq}, changes len: {len}, db version: {version}");
 
-    let details = json!({"len": len, "seqs": seqs.start().0, "seqs_end": seqs.end().0});
+    let details = json!({"len": len, "seqs": seqs.start_int(), "seqs_end": seqs.end_int()});
     assert_always!(
-        len <= (seqs.end().0 - seqs.start().0 + 1) as usize,
+        len <= seqs.len(),
         "number of changes is greater than the seq num",
         &details
     );
     debug_assert!(
-        len <= (seqs.end().0 - seqs.start().0 + 1) as usize,
+        len <= seqs.len(),
         "change from actor {actor_id} version {version} has len {len} but seqs range is {seqs:?} and last_seq is {last_seq}"
     );
 
@@ -1312,7 +1313,7 @@ pub fn process_complete_version<T: Deref<Target = rusqlite::Connection> + Commit
 pub fn check_buffered_meta_to_clear(
     conn: &Connection,
     actor_id: ActorId,
-    versions: RangeInclusive<CrsqlDbVersion>,
+    versions: CrsqlDbVersionRange,
 ) -> rusqlite::Result<bool> {
     let should_clear: bool = conn.prepare_cached("SELECT EXISTS(SELECT 1 FROM __corro_buffered_changes WHERE site_id = ? AND db_version >= ? AND db_version <= ?)")?.query_row(params![actor_id, versions.start(), versions.end()], |row| row.get(0))?;
     if should_clear {

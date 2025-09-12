@@ -1,7 +1,7 @@
 //! Setup main agent state
 
 // External crates
-use antithesis_sdk::assert_always;
+use antithesis_sdk::assert_always_or_unreachable;
 use arc_swap::ArcSwap;
 use camino::Utf8PathBuf;
 use indexmap::IndexMap;
@@ -10,12 +10,7 @@ use metrics::counter;
 use parking_lot::RwLock;
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::json;
-use std::{
-    net::SocketAddr,
-    ops::{DerefMut, RangeInclusive},
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::SocketAddr, ops::DerefMut, sync::Arc, time::Duration};
 use tokio::{
     net::TcpListener,
     sync::{
@@ -41,7 +36,7 @@ use klukai_types::{
     agent::{
         Agent, AgentConfig, Booked, BookedVersions, LockRegistry, LockState, SplitPool, migrate,
     },
-    base::CrsqlDbVersion,
+    base::{CrsqlDbVersion, CrsqlDbVersionRange},
     broadcast::{BroadcastInput, ChangeSource, ChangeV1, FocaInput},
     channel::{CorroReceiver, bounded},
     config::Config,
@@ -60,7 +55,7 @@ pub struct AgentOptions {
     pub api_listeners: Vec<TcpListener>,
     pub rx_bcast: CorroReceiver<BroadcastInput>,
     pub rx_apply: CorroReceiver<(ActorId, CrsqlDbVersion)>,
-    pub rx_clear_buf: CorroReceiver<(ActorId, RangeInclusive<CrsqlDbVersion>)>,
+    pub rx_clear_buf: CorroReceiver<(ActorId, CrsqlDbVersionRange)>,
     pub rx_changes: CorroReceiver<(ChangeV1, ChangeSource)>,
     pub rx_foca: CorroReceiver<FocaInput>,
     pub rtt_rx: TokioReceiver<(SocketAddr, Duration)>,
@@ -228,7 +223,7 @@ pub async fn setup(conf: Config, tripwire: Tripwire) -> eyre::Result<(Agent, Age
                                 "kind": lock.kind,
                                 "state": lock.state,
                             });
-                            assert_always!(
+                            assert_always_or_unreachable!(
                                 duration < Duration::from_secs(60),
                                 "bookie lock held for too long",
                                 &details
