@@ -19,7 +19,7 @@ env:
 
 jobs:
   upload-assets:
-    if: startsWith(github.ref, 'refs/tags/klukai-v') && !contains(github.ref, '-types-') && !contains(github.ref, '-client-') && !contains(github.ref, '-agent-')
+    if: (startsWith(github.ref, 'refs/tags/klukai-v') || github.event.inputs.tag) && !contains(github.ref, '-types-') && !contains(github.ref, '-client-') && !contains(github.ref, '-agent-')
     strategy:
       matrix:
         include:
@@ -44,7 +44,7 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
 
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.3
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - uses: taiki-e/upload-rust-binary-action@v1
         with:
