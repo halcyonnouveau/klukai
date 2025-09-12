@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/halcyonnouveau/klukai/compare/klukai-agent-v0.1.2...klukai-agent-v0.1.3) - 2025-09-12
+
+### Other
+
+- Merge remote-tracking branch 'upstream/main'
+
 ## [0.1.2](https://github.com/halcyonnouveau/klukai/compare/klukai-agent-v0.1.1...klukai-agent-v0.1.2) - 2025-08-23
 
 ### Other
