@@ -114,7 +114,7 @@ jobs:
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@stable
       - name: Generate GitHub App Token
         id: generate_token
         uses: actions/create-github-app-token@v2
