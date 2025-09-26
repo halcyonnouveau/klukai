@@ -2,9 +2,7 @@ use crate::agent::RANDOM_NODES_CHOICES;
 use klukai_types::{agent::SplitPool, config::DEFAULT_GOSSIP_PORT};
 
 use hickory_resolver::{
-    TokioResolver,
-    config::{NameServerConfigGroup, ResolverConfig},
-    name_server::TokioConnectionProvider,
+    ResolveErrorKind,
     proto::rr::{RData, RecordType},
 };
 use rand::{SeedableRng, rngs::StdRng, seq::IteratorRandom};
@@ -61,13 +59,18 @@ async fn resolve_bootstrap(
     bootstrap: &[String],
     our_addr: SocketAddr,
 ) -> eyre::Result<HashSet<SocketAddr>> {
+    use hickory_resolver::{
+        Resolver,
+        config::{NameServerConfigGroup, ResolverConfig},
+    };
+
     let mut addrs = HashSet::new();
 
     if bootstrap.is_empty() {
         return Ok(addrs);
     }
 
-    let system_resolver = TokioResolver::builder_tokio()?.build();
+    let system_resolver = Resolver::builder_tokio()?.build();
 
     for s in bootstrap {
         if let Ok(addr) = s.parse() {
@@ -84,15 +87,14 @@ async fn resolve_bootstrap(
                 } else {
                     (dns_server.parse()?, 53)
                 };
-                let custom_config = ResolverConfig::from_parts(
-                    None,
-                    vec![],
-                    NameServerConfigGroup::from_ips_clear(&[ip], port, true),
-                );
                 resolver = Some(
-                    TokioResolver::builder_with_config(
-                        custom_config,
-                        TokioConnectionProvider::default(),
+                    Resolver::builder_with_config(
+                        ResolverConfig::from_parts(
+                            None,
+                            vec![],
+                            NameServerConfigGroup::from_ips_clear(&[ip], port, true),
+                        ),
+                        hickory_resolver::name_server::TokioConnectionProvider::default(),
                     )
                     .build(),
                 );
@@ -135,11 +137,20 @@ async fn resolve_bootstrap(
                             addrs.insert(addr);
                         }
                     }
-                    Err(e) => {
-                        // Log but don't fail - DNS resolution failures might be transient
-                        error!("could not resolve '{hostname}': {e}");
-                        // For now, we'll continue with other hostnames instead of failing completely
-                    }
+                    Err(e) => match e.kind() {
+                        ResolveErrorKind::Proto(e) => {
+                            if matches!(
+                                e.kind(),
+                                hickory_resolver::proto::ProtoErrorKind::NoRecordsFound { .. }
+                            ) {
+                                // do nothing, that might be fine!
+                            }
+                        }
+                        _ => {
+                            error!("could not resolve '{hostname}': {e}");
+                            return Err(e.into());
+                        }
+                    },
                 }
             }
         }

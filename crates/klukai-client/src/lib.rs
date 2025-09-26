@@ -1,6 +1,7 @@
 pub mod sub;
 
 use bytes::Bytes;
+use hickory_resolver::ResolveErrorKind;
 use hickory_resolver::{ResolveError, Resolver, name_server::TokioConnectionProvider};
 use http_body_util::{BodyExt, Full};
 use hyper::http::uri::PathAndQuery;
@@ -630,7 +631,7 @@ impl AddrPicker {
 
                 timeout(DNS_RESOLVE_TIMEOUT, self.resolver.lookup_ip(host))
                     .await
-                    .map_err(|_| ResolveError::from("DNS lookup timeout"))??
+                    .map_err(|_| ResolveError::from(ResolveErrorKind::Message("timeout")))??
                     .iter()
                     .map(|addr| (addr, port).into())
                     .collect::<Vec<_>>()

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 
-use axum::{Extension, http::StatusCode};
+use axum::{Extension, http::StatusCode, response::IntoResponse};
 use bytes::{BufMut, Bytes, BytesMut};
 use compact_str::{ToCompactString, format_compact};
 use http_body_util::{Full, StreamBody};
@@ -489,8 +489,7 @@ pub async fn catch_up_sub(
 
     let mut last_change_id = {
         let res = match params.from {
-            Some(from) => catch_up_sub_from(&matcher, from, &evt_tx).await,
-            None => {
+            Some(ChangeId(0)) | None => {
                 if params.skip_rows {
                     let conn = match matcher.pool().get().await {
                         Ok(conn) => conn,
@@ -506,6 +505,7 @@ pub async fn catch_up_sub(
                     catch_up_sub_anew(&matcher, &evt_tx).await
                 }
             }
+            Some(from) => catch_up_sub_from(&matcher, from, &evt_tx).await,
         };
 
         match res {
@@ -702,9 +702,7 @@ pub async fn api_v1_subs(
     Extension(tripwire): Extension<Tripwire>,
     axum::extract::Query(params): axum::extract::Query<SubParams>,
     axum::extract::Json(stmt): axum::extract::Json<Statement>,
-) -> hyper::Response<
-    StreamBody<impl futures::Stream<Item = Result<hyper::body::Frame<Bytes>, std::io::Error>>>,
-> {
+) -> impl IntoResponse {
     let stmt = match expand_sql(&agent, &stmt).await {
         Ok(stmt) => stmt,
         Err(e) => {
@@ -1426,8 +1424,75 @@ mod tests {
             )
         );
 
-        // skip rows!
+        // change id 0 should start subs afresh
+        let mut res = api_v1_subs(
+            Extension(agent.clone()),
+            Extension(bcast_cache.clone()),
+            Extension(tripwire.clone()),
+            axum::extract::Query(SubParams {
+                from: Some(0.into()),
+                ..Default::default()
+            }),
+            axum::Json(Statement::Simple("select * from tests".into())),
+        )
+        .await
+        .into_response();
 
+        if !res.status().is_success() {
+            let b = res.body_mut().collect().await.unwrap().to_bytes();
+            println!("body: {}", String::from_utf8_lossy(&b));
+        }
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let mut rows_zero = RowsIter {
+            body: res.into_body(),
+            codec: LinesCodec::new(),
+            buf: BytesMut::new(),
+            done: false,
+        };
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Columns(vec!["id".into(), "text".into()])
+        );
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Row(RowId(1), vec![1i64.into(), "service-name".into()])
+        );
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Row(RowId(2), vec![2i64.into(), "service-name-2".into()])
+        );
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Row(RowId(3), vec![3i64.into(), "service-name-3".into()],)
+        );
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Row(RowId(4), vec![4i64.into(), "service-name-4".into()])
+        );
+
+        assert_eq!(
+            rows_zero.recv::<QueryEvent>().await.unwrap().unwrap(),
+            QueryEvent::Row(RowId(5), vec![5i64.into(), "service-name-5".into()])
+        );
+
+        assert_eq!(
+            rows_zero
+                .recv::<QueryEvent>()
+                .await
+                .unwrap()
+                .unwrap()
+                .meta(),
+            QueryEventMeta::EndOfQuery(Some(ChangeId(3)))
+        );
+
+        // skip rows!
         let mut res = api_v1_subs(
             Extension(agent.clone()),
             Extension(bcast_cache.clone()),

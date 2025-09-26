@@ -836,7 +836,8 @@ fn send_change_chunks<I: Iterator<Item = rusqlite::Result<Change>>>(
                 } else {
                     sender.blocking_send(SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                         actor_id,
-                        changeset: Changeset::Full {
+                        changeset: Changeset::FullV2 {
+                            actor_id,
                             version,
                             changes,
                             seqs,
@@ -1739,6 +1740,7 @@ mod tests {
     use klukai_types::tripwire::Tripwire;
     use klukai_types::{
         api::{ColumnName, TableName},
+        broadcast::ChangesetPerTable,
         config::{Config, DEFAULT_GOSSIP_CLIENT_ADDR, TlsConfig},
         dbsr, dbvr,
         pubsub::pack_columns,
@@ -1859,6 +1861,7 @@ mod tests {
             site_id: actor_id.to_bytes(),
             cl: 1,
         };
+        let changes_two: ChangesetPerTable = changeset_with_changes(vec![change2.clone()]);
 
         let bookie = Bookie::new(Default::default());
 
@@ -1942,14 +1945,17 @@ mod tests {
                 )
             })?;
 
+            let changes_one = changeset_with_changes(vec![change1.clone()]);
+
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(1),
-                        changes: vec![change1],
+                        changes: changes_one,
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -1975,9 +1981,10 @@ mod tests {
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(2),
-                        changes: vec![change2.clone()],
+                        changes: changes_two.clone(),
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -1997,6 +2004,7 @@ mod tests {
             site_id: actor_id.to_bytes(),
             cl: 1,
         };
+        let changes_three = changeset_with_changes(vec![change3.clone()]);
 
         process_multiple_changes(
             agent.clone(),
@@ -2079,14 +2087,16 @@ mod tests {
                 )
             })?;
 
+            let changes_three = changeset_with_changes(vec![change3.clone()]);
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(3),
-                        changes: vec![change3.clone()],
+                        changes: changes_three,
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -2099,9 +2109,10 @@ mod tests {
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(2),
-                        changes: vec![change2.clone()],
+                        changes: changes_two,
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -2243,13 +2254,15 @@ mod tests {
             })?;
 
             let msg = rx.recv().await.unwrap();
+            let changes_four = changeset_with_changes(vec![change4.clone()]);
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(4),
-                        changes: vec![change4],
+                        changes: changes_four,
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -2262,9 +2275,10 @@ mod tests {
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(3),
-                        changes: vec![change3],
+                        changes: changes_three,
                         seqs: dbsr!(0, 0),
                         last_seq: CrsqlSeq(0),
                         ts,
@@ -2272,14 +2286,16 @@ mod tests {
                 }))
             );
 
+            let changes_five = changeset_with_changes(changes.iter().flatten().cloned().collect());
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(5),
-                        changes: changes.iter().flatten().cloned().collect(),
+                        changes: changes_five,
                         seqs: (CrsqlSeq(0)..=last_seq).into(),
                         last_seq,
                         ts,
@@ -2318,23 +2334,28 @@ mod tests {
                 )
             })?;
 
+            let filtered_changes = changes
+                .iter()
+                .flatten()
+                .enumerate()
+                .filter_map(|(i, c)| {
+                    if (4..=7).contains(&i) {
+                        Some(c.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let changes_five_partial = changeset_with_changes(filtered_changes);
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(5),
-                        changes: changes
-                            .iter()
-                            .flatten()
-                            .enumerate()
-                            .filter_map(|(i, c)| if (4..=7).contains(&i) {
-                                Some(c.clone())
-                            } else {
-                                None
-                            })
-                            .collect(),
+                        changes: changes_five_partial,
                         seqs: dbsr!(4, 7),
                         last_seq,
                         ts,
@@ -2354,19 +2375,22 @@ mod tests {
                 )
             })?;
 
+            let filtered_changes = changes
+                .iter()
+                .flatten()
+                .enumerate()
+                .filter_map(|(i, c)| if i == 2 { Some(c.clone()) } else { None })
+                .collect();
+            let changes_five_partial2 = changeset_with_changes(filtered_changes);
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(5),
-                        changes: changes
-                            .iter()
-                            .flatten()
-                            .enumerate()
-                            .filter_map(|(i, c)| if i == 2 { Some(c.clone()) } else { None })
-                            .collect(),
+                        changes: changes_five_partial2,
                         seqs: dbsr!(2, 2),
                         last_seq,
                         ts,
@@ -2374,23 +2398,28 @@ mod tests {
                 }))
             );
 
+            let filtered_changes = changes
+                .iter()
+                .flatten()
+                .enumerate()
+                .filter_map(|(i, c)| {
+                    if (15..=24).contains(&i) {
+                        Some(c.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let changes_five_partial3 = changeset_with_changes(filtered_changes);
             let msg = rx.recv().await.unwrap();
             assert_eq!(
                 msg,
                 SyncMessage::V1(SyncMessageV1::Changeset(ChangeV1 {
                     actor_id,
-                    changeset: Changeset::Full {
+                    changeset: Changeset::FullV2 {
+                        actor_id,
                         version: CrsqlDbVersion(5),
-                        changes: changes
-                            .iter()
-                            .flatten()
-                            .enumerate()
-                            .filter_map(|(i, c)| if (15..=24).contains(&i) {
-                                Some(c.clone())
-                            } else {
-                                None
-                            })
-                            .collect(),
+                        changes: changes_five_partial3,
                         seqs: dbsr!(15, 24),
                         last_seq,
                         ts,
@@ -2400,6 +2429,14 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    fn changeset_with_changes(changes: Vec<Change>) -> ChangesetPerTable {
+        let mut changeset = ChangesetPerTable::default();
+        for change in changes {
+            changeset.insert(change);
+        }
+        changeset
     }
 
     #[tokio::test]

@@ -347,6 +347,11 @@ pub async fn handle_notifications(
                 }
                 counter!("corro.swim.notification", "type" => "memberdown").increment(1);
             }
+            OwnedNotification::Rename(a, b) => {
+                let mut lock = agent.members().write();
+                lock.remove_member(&a);
+                lock.add_member(&b);
+            }
             OwnedNotification::Active => {
                 info!("Current node is considered ACTIVE");
                 counter!("corro.swim.notification", "type" => "active").increment(1);
@@ -363,10 +368,6 @@ pub async fn handle_notifications(
             OwnedNotification::Rejoin(id) => {
                 info!("Rejoined the cluster with id: {id:?}");
                 counter!("corro.swim.notification", "type" => "rejoin").increment(1);
-            }
-            OwnedNotification::Rename(old_id, new_id) => {
-                info!("Member renamed from {old_id:?} to {new_id:?}");
-                counter!("corro.swim.notification", "type" => "rename").increment(1);
             }
         }
     }

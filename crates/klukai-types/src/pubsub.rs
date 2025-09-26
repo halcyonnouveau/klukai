@@ -417,7 +417,8 @@ impl MatcherHandle {
         let mut prepped = conn.prepare_cached("SELECT MIN(id) FROM changes")?;
         let min_change_id: u64 = prepped.query_row([], |row| row.get(0))?;
 
-        if since.0 < min_change_id {
+        // return error if we've cleared changes after the received change id
+        if since.0 + 1 < min_change_id {
             return Err(rusqlite::Error::ModuleError(format!(
                 "subscription already deleted older changes, min change id: {min_change_id}",
             )));
@@ -1108,7 +1109,11 @@ impl Matcher {
                     if let Err(e) = self.set_status("cancelled") {
                         error!(sub_id = %self.id, "could not set status during cancellation: {e}");
                     }
-                    break;
+                    info!(sub_id = %self.id, "attempting to cleanup");
+                    if let Err(e) = Self::cleanup(self.id, self.base_path.clone()) {
+                        error!("could not handle cleanup: {e}");
+                    }
+                    return;
                 }
                 Some(candidates) = self.changes_rx.recv() => {
                     for (table, pks) in  candidates {
@@ -2373,7 +2378,7 @@ pub fn unpack_columns(mut buf: &[u8]) -> Result<Vec<SqliteValueRef<'_>>, UnpackE
                 if buf.remaining() < intlen {
                     return Err(UnpackError::Abort);
                 }
-                let len = buf.get_int(intlen) as usize;
+                let len = buf.get_uint(intlen) as usize;
                 if buf.remaining() < len {
                     return Err(UnpackError::Abort);
                 }
@@ -2390,7 +2395,8 @@ pub fn unpack_columns(mut buf: &[u8]) -> Result<Vec<SqliteValueRef<'_>>, UnpackE
                 if buf.remaining() < intlen {
                     return Err(UnpackError::Abort);
                 }
-                ret.push(SqliteValueRef(ValueRef::Integer(buf.get_int(intlen))));
+                let unsigned = buf.get_uint(intlen);
+                ret.push(SqliteValueRef(ValueRef::Integer(unsigned as i64)));
             }
             Some(ColumnType::Null) => {
                 ret.push(SqliteValueRef(ValueRef::Null));
@@ -2399,7 +2405,7 @@ pub fn unpack_columns(mut buf: &[u8]) -> Result<Vec<SqliteValueRef<'_>>, UnpackE
                 if buf.remaining() < intlen {
                     return Err(UnpackError::Abort);
                 }
-                let len = buf.get_int(intlen) as usize;
+                let len = buf.get_uint(intlen) as usize;
                 if buf.remaining() < len {
                     return Err(UnpackError::Abort);
                 }
@@ -2419,7 +2425,7 @@ mod tests {
 
     use crate::spawn::wait_for_all_pending_handles;
     use camino::Utf8PathBuf;
-    use rusqlite::params;
+    use rusqlite::{Connection, params};
     use tokio::sync::Semaphore;
 
     use crate::{
@@ -2428,11 +2434,70 @@ mod tests {
         base::CrsqlDbVersion,
         change::row_to_change,
         schema::{apply_schema, parse_sql},
-        sqlite::{CrConn, setup_conn},
+        sqlite::{CrConn, rusqlite_to_crsqlite, setup_conn},
     };
     use klukai_tests::tempdir::TempDir;
 
     use super::*;
+
+    #[test]
+    fn test_pack_unpack() {
+        let neg_one: i64 = -1;
+        let big_neg: i64 = -2500000;
+        let i8_max: i64 = i8::MAX as i64;
+        let i16_max: i64 = i16::MAX as i64;
+        let columns = vec![
+            vec![1_i64.into(), SqliteValue::Null],
+            vec![
+                neg_one.into(),
+                "abcdefghijklmnopqrstuvwxyz1234567890?".into(),
+            ],
+            vec![i64::MIN.into(), 1.0.into()],
+            vec![i64::MAX.into(), vec![1, 2, 3].into()],
+            vec![big_neg.into(), f64::MAX.into()],
+            vec![10156800_i64.into(), f64::MIN.into()],
+            vec![10000000_i64.into(), "".into()],
+            vec![i8_max.into(), "a".into()],
+            vec![i16_max.into(), vec![0].into()],
+        ];
+        for cols in columns.clone() {
+            let packed = pack_columns(&cols).unwrap();
+            let unpacked: Vec<_> = unpack_columns(&packed)
+                .unwrap()
+                .into_iter()
+                .map(|v| v.to_owned())
+                .collect();
+            assert_eq!(cols, unpacked);
+        }
+
+        let conn = Connection::open_in_memory().unwrap();
+        let cr_conn = rusqlite_to_crsqlite(conn).unwrap();
+        cr_conn
+            .execute_batch("CREATE TABLE foo (pk INTEGER NOT NULL PRIMARY KEY, col_1);")
+            .unwrap();
+
+        for cols in columns {
+            cr_conn
+                .execute(
+                    "INSERT INTO foo (pk, col_1) VALUES (?, ?);",
+                    params![cols[0], cols[1]],
+                )
+                .unwrap();
+            let packed = cr_conn
+                .query_row(
+                    "SELECT crsql_pack_columns(pk, col_1) FROM foo where pk = ?",
+                    params![cols[0]],
+                    |row| row.get::<_, Vec<u8>>(0),
+                )
+                .unwrap();
+            let unpacked: Vec<_> = unpack_columns(&packed)
+                .unwrap()
+                .into_iter()
+                .map(|v| v.to_owned())
+                .collect();
+            assert_eq!(cols, unpacked);
+        }
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_matcher() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
@@ -2488,9 +2553,6 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_diff() {
         _ = tracing_subscriber::fmt::try_init();
-
-        let (tripwire, tripwire_worker, tripwire_tx) = Tripwire::new_simple();
-
         let sql = "SELECT json_object(
             'targets', json_array(cs.address||':'||cs.port),
             'labels',  json_object(
@@ -2675,7 +2737,7 @@ mod tests {
         let mut last_change_id = None;
 
         let id = {
-            // let (db_v_tx, db_v_rx) = watch::channel(0);
+            let (tripwire, tripwire_worker, tripwire_tx) = Tripwire::new_simple();
 
             let (matcher, maybe_created) = subs
                 .get_or_insert(
@@ -2867,14 +2929,18 @@ mod tests {
                     println!("{}", s.join(", "));
                 }
             }
-            if let Some(handle) = subs.remove(&matcher.id()) {
-                handle.cleanup().await;
-            }
+
+            subs.remove(&matcher.id());
+
+            // trip the wire so subs loop exits cleanly
+            tripwire_tx.send(()).await.ok();
+            tripwire_worker.await;
             matcher.id()
         };
 
         tokio::time::sleep(Duration::from_secs(1)).await;
 
+        let (tripwire, tripwire_worker, tripwire_tx) = Tripwire::new_simple();
         // restore subscription
         let matcher_id = {
             let (matcher, created) = subs

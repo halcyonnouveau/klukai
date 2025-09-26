@@ -123,8 +123,11 @@ pub async fn initialise_foca(agent: &Agent) {
                     .tx_foca()
                     .send(FocaInput::Cmd(FocaCmd::Rejoin(cb_tx)))
                     .await?;
-                cb_rx.await?.map_err(|e| eyre::eyre!("Foca error: {}", e))?;
-                Ok(())
+                // Foca errors have 3 variants that are + Send but not + Sync,
+                // so do a conversion here, which is unfortunate
+                cb_rx
+                    .await?
+                    .map_err(|foca_err| eyre::eyre!("foca error: {foca_err}"))
             }
 
             if let Err(e) = apply_rejoin(&agent).await {
@@ -1042,9 +1045,9 @@ pub async fn process_multiple_changes(
     let mut change_chunk_size = 0;
 
     for (_actor_id, changeset, db_version, _src) in changesets {
-        change_chunk_size += changeset.changes().len();
-        match_changes(agent.subs_manager(), changeset.changes(), db_version);
-        match_changes(agent.updates_manager(), changeset.changes(), db_version);
+        change_chunk_size += changeset.len();
+        match_changes(agent.subs_manager(), &changeset, db_version);
+        match_changes(agent.updates_manager(), &changeset, db_version);
     }
 
     histogram!("corro.agent.changes.processing.time.seconds", "source" => "remote")

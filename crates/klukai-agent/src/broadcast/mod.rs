@@ -137,7 +137,7 @@ pub fn runtime_loop(
         actor,
         config.read().clone(),
         rng,
-        foca::BincodeCodec(bincode::config::standard()),
+        foca::BincodeCodec(bincode::config::Configuration::default()),
         NoCustomBroadcast,
     );
 

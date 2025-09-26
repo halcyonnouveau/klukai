@@ -1,5 +1,5 @@
 use nom::{
-    IResult,
+    IResult, Parser,
     bytes::complete::tag,
     character::complete::{alpha1, multispace0},
     sequence::delimited,
@@ -21,7 +21,7 @@ impl Simple {
     /// etc
     pub fn parse_edge<'input>(&mut self, input: &'input str) -> IResult<&'input str, ()> {
         let (input, first) = alpha1(input)?;
-        let (input, _) = delimited(multispace0, tag("->"), multispace0)(input)?;
+        let (input, _) = delimited(multispace0, tag("->"), multispace0).parse(input)?;
         let (input, second) = alpha1(input)?;
 
         // Add first -> second edge

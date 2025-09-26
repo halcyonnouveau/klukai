@@ -37,8 +37,8 @@ notify = { workspace = true }
 notify-debouncer-mini = { workspace = true }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true }
 opentelemetry-otlp = { workspace = true }
+opentelemetry_sdk = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true }
 rangemap = { workspace = true }
 rhai = { workspace = true }

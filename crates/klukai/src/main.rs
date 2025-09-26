@@ -22,9 +22,9 @@ use klukai_types::{
     sqlite3_restore,
 };
 use once_cell::sync::OnceCell;
-use opentelemetry::{KeyValue, global, trace::TracerProvider};
+use opentelemetry::{KeyValue, global};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{Resource, propagation::TraceContextPropagator};
+use opentelemetry_sdk as os;
 use rusqlite::{Connection, OptionalExtension};
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{
@@ -58,7 +58,7 @@ fn init_tracing(cli: &Cli) -> Result<Option<admin::TracingHandle>, ConfigError> 
             eprintln!("While parsing env filters: {diags}, using default");
         }
 
-        global::set_text_map_propagator(TraceContextPropagator::new());
+        global::set_text_map_propagator(os::propagation::TraceContextPropagator::new());
 
         // Tracing
         let (env_filter, handle) = tracing_subscriber::reload::Layer::new(filter.layer());
@@ -66,40 +66,49 @@ fn init_tracing(cli: &Cli) -> Result<Option<admin::TracingHandle>, ConfigError> 
         let sub = tracing_subscriber::registry::Registry::default().with(env_filter);
 
         if let Some(otel) = &config.telemetry.open_telemetry {
-            let mut tonic_builder = opentelemetry_otlp::SpanExporter::builder().with_tonic();
-
-            if let OtelConfig::Exporter { endpoint } = otel {
-                tonic_builder = tonic_builder.with_endpoint(endpoint.clone());
+            let otlp_exporter = opentelemetry_otlp::SpanExporter::builder().with_tonic();
+            let otlp_exporter = match otel {
+                OtelConfig::FromEnv => otlp_exporter,
+                OtelConfig::Exporter { endpoint } => otlp_exporter.with_endpoint(endpoint),
             }
+            .build()
+            .map_err(|err| config::ConfigError::Foreign(Box::new(err)))?;
 
-            let otlp_exporter = tonic_builder
-                .build()
-                .expect("Failed to build OTLP exporter");
-
-            let resource = Resource::builder()
-                .with_attributes([
-                    KeyValue::new(
-                        opentelemetry_semantic_conventions::attribute::SERVICE_NAME,
-                        "corrosion",
-                    ),
-                    KeyValue::new(
-                        opentelemetry_semantic_conventions::attribute::SERVICE_VERSION,
-                        VERSION,
-                    ),
-                    KeyValue::new(
-                        "host.name",
-                        hostname::get().unwrap().to_string_lossy().into_owned(),
-                    ),
-                ])
+            let trace_config = os::Resource::builder()
+                .with_attribute(KeyValue::new(
+                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                    "corrosion",
+                ))
+                .with_attribute(KeyValue::new(
+                    opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                    VERSION,
+                ))
+                .with_attribute(KeyValue::new(
+                    opentelemetry_semantic_conventions::resource::HOST_NAME,
+                    hostname::get().unwrap().to_string_lossy().into_owned(),
+                ))
                 .build();
 
-            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_resource(resource)
-                .with_batch_exporter(otlp_exporter)
+            let batch_processor =
+                os::trace::span_processor_with_async_runtime::BatchSpanProcessor::builder(
+                    otlp_exporter,
+                    os::runtime::Tokio,
+                )
+                .with_batch_config(
+                    os::trace::BatchConfigBuilder::default()
+                        .with_max_queue_size(10240)
+                        .build(),
+                )
                 .build();
 
-            let tracer = tracer_provider.tracer("corrosion");
-            global::set_tracer_provider(tracer_provider);
+            let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_resource(trace_config)
+                .with_span_processor(batch_processor)
+                .build();
+
+            use opentelemetry::trace::TracerProvider;
+            let tracer = provider.tracer("");
+            global::set_tracer_provider(provider);
 
             let sub = sub.with(tracing_opentelemetry::layer().with_tracer(tracer));
             match config.log.format {

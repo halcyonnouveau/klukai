@@ -86,7 +86,7 @@ bincode = "2.0"
 serde = "1.0"
 serde_json = { version = "1.0", features = ["raw_value"] }
 serde_with = "3.14"
-speedy = { version = "0.8", features = ["uuid", "smallvec", "indexmap"] }
+speedy = { version = "0.8", features = ["uuid", "smallvec", "indexmap", "indexmap_v2" ], package = "speedy" }
 
 # Observability and tracing
 metrics = "0.24"
@@ -96,8 +96,8 @@ metrics-exporter-prometheus = { version = "0.17", default-features = false, feat
 metrics-util = "0.20"
 opentelemetry = { version = "0.30", features = ["trace", "metrics", "logs"] }
 opentelemetry-otlp = { version = "0.30", features = ["grpc-tonic", "trace"] }
-opentelemetry-semantic-conventions = "0.30"
-opentelemetry_sdk = { version = "0.30", features = ["rt-tokio", "trace"] }
+opentelemetry-semantic-conventions = { version = "0.30", features = ["semconv_experimental"] }
+opentelemetry_sdk = { version = "0.30", features = ["experimental_trace_batch_span_processor_with_async_runtime", "experimental_async_runtime", "rt-tokio"] }
 tracing = "0.1"
 tracing-filter = { version = "0.1.0-alpha.2", features = ["smallvec"] }
 tracing-opentelemetry = { version = "0.31", default-features = false, features = [
