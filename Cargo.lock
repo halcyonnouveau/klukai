@@ -2075,7 +2075,7 @@ dependencies = [
 
 [[package]]
 name = "klukai"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "antithesis_sdk",
  "build-info",
@@ -2132,7 +2132,7 @@ dependencies = [
 
 [[package]]
 name = "klukai-agent"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "antithesis_sdk",
  "arc-swap",
@@ -2189,7 +2189,7 @@ dependencies = [
 
 [[package]]
 name = "klukai-client"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "bytes",
  "eyre",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "klukai-types"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "antithesis_sdk",
  "arc-swap",
